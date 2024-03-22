@@ -1,5 +1,5 @@
 use egui::{
-    text::LayoutJob, vec2, Align2, Event, EventFilter, FontId, Key, Margin, NumExt, Sense,
+    text::LayoutJob, vec2, Align2, Event, EventFilter, FontId, Key, Margin, NumExt, Sense, Shape,
     TextFormat, Vec2,
 };
 
@@ -72,6 +72,8 @@ impl eframe::App for TemplateApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
+
+            let where_to_put_background = ui.painter().add(Shape::Noop);
 
             let font_id = FontId::new(14.0, egui::FontFamily::Monospace);
 
@@ -147,7 +149,7 @@ impl eframe::App for TemplateApp {
             // Do interactions.
             // =============================
             let sense = Sense::click_and_drag();
-            let response = ui.interact(rect, id, sense);
+            let mut response = ui.interact(rect, id, sense);
 
             if let Some(_pointer_pos) = ui.ctx().pointer_interact_pos() {
                 if response.hovered() {
@@ -222,6 +224,37 @@ impl eframe::App for TemplateApp {
             if ui.is_rect_visible(rect) {
                 painter.galley(galley_pos, galley.clone(), egui::Color32::WHITE);
             }
+
+            // =============================
+            // Draw border and background.
+            // =============================
+            let frame_id = response.id;
+            let frame_rect = Margin::symmetric(4.0, 2.0).expand_rect(response.rect);
+            ui.allocate_space(frame_rect.size());
+            response |= ui.interact(frame_rect, frame_id, Sense::click());
+            if response.clicked() && !response.lost_focus() {
+                ui.memory_mut(|mem| mem.request_focus(response.id));
+            }
+
+            let visuals = ui.style().interact(&response);
+            let frame_rect = frame_rect.expand(visuals.expansion);
+            let shape = if response.has_focus() {
+                epaint::RectShape::new(
+                    frame_rect,
+                    0.0,
+                    ui.visuals().extreme_bg_color,
+                    ui.visuals().selection.stroke,
+                )
+            } else {
+                epaint::RectShape::new(
+                    frame_rect,
+                    0.0,
+                    ui.visuals().extreme_bg_color,
+                    ui.visuals().selection.stroke, // Probably want a fainter versino of the stroke color.
+                )
+            };
+
+            ui.painter().set(where_to_put_background, shape);
         });
     }
 }
