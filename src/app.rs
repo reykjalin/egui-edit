@@ -92,12 +92,10 @@ impl eframe::App for TemplateApp {
                                                 } else {
                                                     egui::Color32::BLUE
                                                 }
+                                            } else if ui.ctx().style().visuals.dark_mode {
+                                                egui::Color32::LIGHT_RED
                                             } else {
-                                                if ui.ctx().style().visuals.dark_mode {
-                                                    egui::Color32::LIGHT_RED
-                                                } else {
-                                                    egui::Color32::RED
-                                                }
+                                                egui::Color32::RED
                                             },
                                             ..Default::default()
                                         },
