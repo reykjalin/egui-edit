@@ -75,7 +75,7 @@ impl eframe::App for TemplateApp {
 
             let font_id = FontId::new(14.0, egui::FontFamily::Monospace);
 
-            let layouter = |ui: &egui::Ui, text: &str, wrap_width: f32| {
+            let layouter = |ui: &egui::Ui, text: &str, _wrap_width: f32| {
                 let mut job = LayoutJob::default();
 
                 for (i, word) in text.split(' ').enumerate() {
@@ -111,7 +111,7 @@ impl eframe::App for TemplateApp {
                     }
                 }
 
-                job.wrap.max_width = wrap_width;
+                job.wrap.max_width = f32::INFINITY;
                 ui.fonts(|f| f.layout_job(job))
             };
 
@@ -122,19 +122,14 @@ impl eframe::App for TemplateApp {
 
             const MIN_WIDTH: f32 = 24.0;
             let available_width = ui.available_width().at_least(MIN_WIDTH);
-            let desired_width = ui.spacing().text_edit_width;
-            let wrap_width = if ui.layout().horizontal_justify() {
-                available_width
-            } else {
-                desired_width.min(available_width)
-            };
+            let wrap_width = available_width;
 
             let galley = layouter(ui, &self.text, wrap_width);
 
-            // No clipping, always wrap for now.
-            let desired_width = galley.size().x.max(wrap_width);
+            // Clip all text.
+            let desired_width = available_width;
             // Desired height is one row of text for now.
-            let desired_height = 4.0 * row_height;
+            let desired_height = ui.available_height().at_least(row_height);
             // Default values form the TextGui TextEdit.
             let at_least = Vec2::ZERO - Margin::symmetric(4.0, 2.0).sum();
             let desired_size =
