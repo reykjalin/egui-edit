@@ -1,4 +1,7 @@
-use egui::{text::LayoutJob, vec2, Align2, FontId, Margin, NumExt, TextFormat, Vec2};
+use egui::{
+    text::LayoutJob, vec2, Align2, Event, EventFilter, FontId, Key, Margin, NumExt, Sense,
+    TextFormat, Vec2,
+};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -112,6 +115,9 @@ impl eframe::App for TemplateApp {
                 ui.fonts(|f| f.layout_job(job))
             };
 
+            // =============================
+            // Calculate dimensions.
+            // =============================
             let row_height = ui.fonts(|f| f.row_height(&font_id));
 
             const MIN_WIDTH: f32 = 24.0;
@@ -123,7 +129,7 @@ impl eframe::App for TemplateApp {
                 desired_width.min(available_width)
             };
 
-            let galley = layouter(ui, "Hello, world!", wrap_width);
+            let galley = layouter(ui, &self.text, wrap_width);
 
             // No clipping, always wrap for now.
             let desired_width = galley.size().x.max(wrap_width);
@@ -134,7 +140,7 @@ impl eframe::App for TemplateApp {
             let desired_size =
                 vec2(desired_width, galley.size().y.max(desired_height)).at_least(at_least);
 
-            let (_auto_id, rect) = ui.allocate_space(desired_size);
+            let (id, rect) = ui.allocate_space(desired_size);
 
             let painter = ui.painter_at(rect.expand(1.0)); // expand to avoid clipping cursor.
 
@@ -143,6 +149,77 @@ impl eframe::App for TemplateApp {
                 .intersect(rect) // limit pos to the response rect area
                 .min;
 
+            // =============================
+            // Do interactions.
+            // =============================
+            let sense = Sense::click_and_drag();
+            let response = ui.interact(rect, id, sense);
+
+            if let Some(_pointer_pos) = ui.ctx().pointer_interact_pos() {
+                if response.hovered() {
+                    ui.output_mut(|o| o.mutable_text_under_cursor = true);
+                }
+            }
+
+            if response.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
+            }
+
+            if response.clicked() {
+                ui.memory_mut(|m| m.request_focus(response.id));
+            }
+
+            let event_filter = EventFilter {
+                horizontal_arrows: true,
+                vertical_arrows: true,
+                tab: true,
+                ..Default::default()
+            };
+
+            if ui.memory(|m| m.has_focus(id)) {
+                let events = ui.input(|i| i.filtered_events(&event_filter));
+
+                ui.memory_mut(|m| m.set_focus_lock_filter(id, event_filter));
+
+                for event in &events {
+                    match event {
+                        Event::Text(text_to_insert) => {
+                            if !text_to_insert.is_empty()
+                                && text_to_insert != "\n"
+                                && text_to_insert != "\r"
+                            {
+                                self.text += text_to_insert;
+                            }
+                        }
+                        Event::Key {
+                            key: Key::Tab,
+                            pressed: true,
+                            ..
+                        } => {
+                            self.text += "\t";
+                        }
+                        Event::Key {
+                            key: Key::Enter,
+                            pressed: true,
+                            ..
+                        } => {
+                            self.text += "\n";
+                        }
+                        Event::Key {
+                            key: Key::Backspace,
+                            pressed: true,
+                            ..
+                        } => {
+                            self.text.pop();
+                        }
+                        _ => (),
+                    }
+                }
+            }
+
+            // =============================
+            // Draw the text.
+            // =============================
             if ui.is_rect_visible(rect) {
                 painter.galley(galley_pos, galley.clone(), egui::Color32::WHITE);
             }
