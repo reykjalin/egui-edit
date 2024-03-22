@@ -1,5 +1,6 @@
 [package]
 name = "egui_edit"
+description = "Editor built with egui."
 version = "0.1.0"
 authors = ["Kristófer Reykjalín <kristofer@thorlaksson.com>"]
 edition = "2021"
@@ -38,3 +39,15 @@ opt-level = 2
 # If you fork https://github.com/emilk/egui you can test with:
 # egui = { path = "../egui/crates/egui" }
 # eframe = { path = "../egui/crates/eframe" }
+
+[package.metadata.bundle]
+name = "egui_edit"
+identifier = "com.thorlaksson.egui_edit"
+icon = ["assets/E1C1.png"]
+version = "1.0.0"
+resources = ["assets"]
+category = "Developer Tool"
+short_description = "Editor built with egui."
+long_description = """
+Editor built with egui. Test to see if a simple editor can be built with egui.
+"""
