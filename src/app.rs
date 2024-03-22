@@ -4,14 +4,14 @@ use egui::{text::LayoutJob, FontId, TextFormat};
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
+    #[serde(skip)]
     text: String,
 }
 
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
-            // Example stuff:
-            text: "Test".to_owned(),
+            text: "".to_owned(),
         }
     }
 }
