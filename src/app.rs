@@ -1,4 +1,4 @@
-use egui::{text::LayoutJob, FontId, TextFormat};
+use egui::{text::LayoutJob, vec2, Align2, FontId, Margin, NumExt, TextFormat, Vec2};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -70,58 +70,82 @@ impl eframe::App for TemplateApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
 
-            ui.with_layout(
-                egui::Layout::centered_and_justified(egui::Direction::TopDown),
-                |ui| {
-                    ui.add(
-                        egui::TextEdit::multiline(&mut self.text)
-                            .desired_width(f32::INFINITY)
-                            .code_editor()
-                            .layouter(&mut |ui: &egui::Ui, text, wrap_width| {
-                                let mut job = LayoutJob::default();
+            let font_id = FontId::new(14.0, egui::FontFamily::Monospace);
 
-                                for (i, word) in text.split(' ').enumerate() {
-                                    job.append(
-                                        word,
-                                        0.0,
-                                        TextFormat {
-                                            font_id: FontId::new(14.0, egui::FontFamily::Monospace),
-                                            color: if i % 2 == 0 {
-                                                if ui.ctx().style().visuals.dark_mode {
-                                                    egui::Color32::LIGHT_BLUE
-                                                } else {
-                                                    egui::Color32::BLUE
-                                                }
-                                            } else if ui.ctx().style().visuals.dark_mode {
-                                                egui::Color32::LIGHT_RED
-                                            } else {
-                                                egui::Color32::RED
-                                            },
-                                            ..Default::default()
-                                        },
-                                    );
+            let layouter = |ui: &egui::Ui, text: &str, wrap_width: f32| {
+                let mut job = LayoutJob::default();
 
-                                    if i != text.split(' ').count() - 1 {
-                                        job.append(
-                                            " ",
-                                            0.0,
-                                            TextFormat {
-                                                font_id: FontId::new(
-                                                    14.0,
-                                                    egui::FontFamily::Monospace,
-                                                ),
-                                                ..Default::default()
-                                            },
-                                        );
-                                    }
+                for (i, word) in text.split(' ').enumerate() {
+                    job.append(
+                        word,
+                        0.0,
+                        TextFormat {
+                            font_id: font_id.clone(),
+                            color: if i % 2 == 0 {
+                                if ui.ctx().style().visuals.dark_mode {
+                                    egui::Color32::LIGHT_BLUE
+                                } else {
+                                    egui::Color32::BLUE
                                 }
-
-                                job.wrap.max_width = wrap_width;
-                                ui.fonts(|f| f.layout_job(job))
-                            }),
+                            } else if ui.ctx().style().visuals.dark_mode {
+                                egui::Color32::LIGHT_RED
+                            } else {
+                                egui::Color32::RED
+                            },
+                            ..Default::default()
+                        },
                     );
-                },
-            );
+
+                    if i != text.split(' ').count() - 1 {
+                        job.append(
+                            " ",
+                            0.0,
+                            TextFormat {
+                                font_id: FontId::new(14.0, egui::FontFamily::Monospace),
+                                ..Default::default()
+                            },
+                        );
+                    }
+                }
+
+                job.wrap.max_width = wrap_width;
+                ui.fonts(|f| f.layout_job(job))
+            };
+
+            let row_height = ui.fonts(|f| f.row_height(&font_id));
+
+            const MIN_WIDTH: f32 = 24.0;
+            let available_width = ui.available_width().at_least(MIN_WIDTH);
+            let desired_width = ui.spacing().text_edit_width;
+            let wrap_width = if ui.layout().horizontal_justify() {
+                available_width
+            } else {
+                desired_width.min(available_width)
+            };
+
+            let galley = layouter(ui, "Hello, world!", wrap_width);
+
+            // No clipping, always wrap for now.
+            let desired_width = galley.size().x.max(wrap_width);
+            // Desired height is one row of text for now.
+            let desired_height = 4.0 * row_height;
+            // Default values form the TextGui TextEdit.
+            let at_least = Vec2::ZERO - Margin::symmetric(4.0, 2.0).sum();
+            let desired_size =
+                vec2(desired_width, galley.size().y.max(desired_height)).at_least(at_least);
+
+            let (_auto_id, rect) = ui.allocate_space(desired_size);
+
+            let painter = ui.painter_at(rect.expand(1.0)); // expand to avoid clipping cursor.
+
+            let galley_pos = Align2::LEFT_TOP
+                .align_size_within_rect(galley.size(), rect)
+                .intersect(rect) // limit pos to the response rect area
+                .min;
+
+            if ui.is_rect_visible(rect) {
+                painter.galley(galley_pos, galley.clone(), egui::Color32::WHITE);
+            }
         });
     }
 }
