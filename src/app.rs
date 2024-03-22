@@ -73,6 +73,9 @@ impl eframe::App for TemplateApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
 
+            // =============================
+            // Set up the available layout.
+            // =============================
             let where_to_put_background = ui.painter().add(Shape::Noop);
             let margin = Margin::symmetric(4.0, 2.0);
             let available = ui.available_rect_before_wrap();
@@ -81,6 +84,9 @@ impl eframe::App for TemplateApp {
 
             let font_id = FontId::new(14.0, egui::FontFamily::Monospace);
 
+            // =============================
+            // Layout function for the text, incl. syntax highlighting.
+            // =============================
             let layouter = |ui: &egui::Ui, text: &str, _wrap_width: f32| {
                 let mut job = LayoutJob::default();
 
