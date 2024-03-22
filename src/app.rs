@@ -252,19 +252,21 @@ impl eframe::App for TemplateApp {
 
                 let visuals = ui.style().interact(&response);
                 let frame_rect = frame_rect.expand(visuals.expansion);
+                let active_stroke = ui.visuals().selection.stroke;
+                let inactive_stroke = ui.visuals().selection.stroke; // Probably want a fainter version of the active stroke color.
                 let shape = if response.has_focus() {
                     epaint::RectShape::new(
                         frame_rect,
                         0.0,
                         ui.visuals().extreme_bg_color,
-                        ui.visuals().selection.stroke,
+                        active_stroke,
                     )
                 } else {
                     epaint::RectShape::new(
                         frame_rect,
                         0.0,
                         ui.visuals().extreme_bg_color,
-                        ui.visuals().selection.stroke, // Probably want a fainter versino of the stroke color.
+                        inactive_stroke,
                     )
                 };
 
