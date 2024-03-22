@@ -74,6 +74,10 @@ impl eframe::App for TemplateApp {
             // The central panel the region left after adding TopPanel's and SidePanel's
 
             let where_to_put_background = ui.painter().add(Shape::Noop);
+            let margin = Margin::symmetric(4.0, 2.0);
+            let available = ui.available_rect_before_wrap();
+            let max_rect = margin.shrink_rect(available);
+            let mut content_ui = ui.child_ui(max_rect, egui::Layout::default());
 
             let font_id = FontId::new(14.0, egui::FontFamily::Monospace);
 
@@ -120,25 +124,25 @@ impl eframe::App for TemplateApp {
             // =============================
             // Calculate dimensions.
             // =============================
-            let row_height = ui.fonts(|f| f.row_height(&font_id));
+            let row_height = content_ui.fonts(|f| f.row_height(&font_id));
 
             const MIN_WIDTH: f32 = 24.0;
-            let available_width = ui.available_width().at_least(MIN_WIDTH);
+            let available_width = content_ui.available_width().at_least(MIN_WIDTH);
             let wrap_width = available_width;
 
-            let galley = layouter(ui, &self.text, wrap_width);
+            let galley = layouter(&content_ui, &self.text, wrap_width);
 
             // Clip all text.
             let desired_width = available_width;
-            let desired_height = ui.available_height().at_least(row_height);
+            let desired_height = content_ui.available_height().at_least(row_height);
             // Default values form the TextGui TextEdit.
             let at_least = Vec2::ZERO - Margin::symmetric(4.0, 2.0).sum();
             let desired_size =
                 vec2(desired_width, galley.size().y.max(desired_height)).at_least(at_least);
 
-            let (id, rect) = ui.allocate_space(desired_size);
+            let (id, rect) = content_ui.allocate_space(desired_size);
 
-            let painter = ui.painter_at(rect.expand(1.0)); // expand to avoid clipping cursor.
+            let painter = content_ui.painter_at(rect.expand(1.0)); // expand to avoid clipping cursor.
 
             let galley_pos = Align2::LEFT_TOP
                 .align_size_within_rect(galley.size(), rect)
@@ -149,20 +153,20 @@ impl eframe::App for TemplateApp {
             // Do interactions.
             // =============================
             let sense = Sense::click_and_drag();
-            let mut response = ui.interact(rect, id, sense);
+            let mut response = content_ui.interact(rect, id, sense);
 
-            if let Some(_pointer_pos) = ui.ctx().pointer_interact_pos() {
+            if let Some(_pointer_pos) = content_ui.ctx().pointer_interact_pos() {
                 if response.hovered() {
-                    ui.output_mut(|o| o.mutable_text_under_cursor = true);
+                    content_ui.output_mut(|o| o.mutable_text_under_cursor = true);
                 }
             }
 
             if response.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
+                content_ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
             }
 
             if response.clicked() {
-                ui.memory_mut(|m| m.request_focus(response.id));
+                content_ui.memory_mut(|m| m.request_focus(response.id));
             }
 
             let event_filter = EventFilter {
@@ -172,10 +176,10 @@ impl eframe::App for TemplateApp {
                 ..Default::default()
             };
 
-            if ui.memory(|m| m.has_focus(id)) {
-                let events = ui.input(|i| i.filtered_events(&event_filter));
+            if content_ui.memory(|m| m.has_focus(id)) {
+                let events = content_ui.input(|i| i.filtered_events(&event_filter));
 
-                ui.memory_mut(|m| m.set_focus_lock_filter(id, event_filter));
+                content_ui.memory_mut(|m| m.set_focus_lock_filter(id, event_filter));
 
                 for event in &events {
                     match event {
@@ -221,7 +225,7 @@ impl eframe::App for TemplateApp {
             // =============================
             // Draw the text.
             // =============================
-            if ui.is_rect_visible(rect) {
+            if content_ui.is_rect_visible(rect) {
                 painter.galley(galley_pos, galley.clone(), egui::Color32::WHITE);
             }
 
