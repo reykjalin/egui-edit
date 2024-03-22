@@ -1,20 +1,17 @@
+use egui::{text::LayoutJob, FontId, TextFormat};
+
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
-    // Example stuff:
-    label: String,
-
-    #[serde(skip)] // This how you opt-out of serialization of a field
-    value: f32,
+    text: String,
 }
 
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
             // Example stuff:
-            label: "Hello World!".to_owned(),
-            value: 2.7,
+            text: "Test".to_owned(),
         }
     }
 }
@@ -61,24 +58,59 @@ impl eframe::App for TemplateApp {
             });
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            // The central panel the region left after adding TopPanel's and SidePanel's
-            ui.heading("eframe template");
-
-            ui.horizontal(|ui| {
-                ui.label("Write something: ");
-                ui.text_edit_singleline(&mut self.label);
-            });
-
-            ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
-            if ui.button("Increment").clicked() {
-                self.value += 1.0;
-            }
+        egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
+            // The bottom panel is often a good place for toolbars and status bars:
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 powered_by_egui_and_eframe(ui);
                 egui::warn_if_debug_build(ui);
             });
+        });
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            // The central panel the region left after adding TopPanel's and SidePanel's
+
+            ui.with_layout(
+                egui::Layout::centered_and_justified(egui::Direction::TopDown),
+                |ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut self.text)
+                            .desired_width(f32::INFINITY)
+                            .font(egui::TextStyle::Monospace)
+                            .layouter(&mut |ui: &egui::Ui, text, wrap_width| {
+                                let mut job = LayoutJob::default();
+
+                                for (i, word) in text.split(' ').enumerate() {
+                                    job.append(
+                                        word,
+                                        0.0,
+                                        TextFormat {
+                                            font_id: FontId::new(14.0, egui::FontFamily::Monospace),
+                                            color: if i % 2 == 0 {
+                                                egui::Color32::BLUE
+                                            } else {
+                                                egui::Color32::RED
+                                            },
+                                            ..Default::default()
+                                        },
+                                    );
+
+                                    job.append(
+                                        " ",
+                                        0.0,
+                                        TextFormat {
+                                            font_id: FontId::new(14.0, egui::FontFamily::Monospace),
+                                            ..Default::default()
+                                        },
+                                    );
+                                }
+
+                                job.wrap.max_width = wrap_width;
+                                ui.fonts(|f| f.layout_job(job))
+                            }),
+                    );
+                },
+            );
         });
     }
 }
