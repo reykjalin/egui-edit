@@ -128,7 +128,6 @@ impl eframe::App for TemplateApp {
 
             // Clip all text.
             let desired_width = available_width;
-            // Desired height is one row of text for now.
             let desired_height = ui.available_height().at_least(row_height);
             // Default values form the TextGui TextEdit.
             let at_least = Vec2::ZERO - Margin::symmetric(4.0, 2.0).sum();
