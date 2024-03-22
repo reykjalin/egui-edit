@@ -76,7 +76,7 @@ impl eframe::App for TemplateApp {
                     ui.add(
                         egui::TextEdit::multiline(&mut self.text)
                             .desired_width(f32::INFINITY)
-                            .font(egui::TextStyle::Monospace)
+                            .code_editor()
                             .layouter(&mut |ui: &egui::Ui, text, wrap_width| {
                                 let mut job = LayoutJob::default();
 
@@ -87,22 +87,35 @@ impl eframe::App for TemplateApp {
                                         TextFormat {
                                             font_id: FontId::new(14.0, egui::FontFamily::Monospace),
                                             color: if i % 2 == 0 {
-                                                egui::Color32::BLUE
+                                                if ui.ctx().style().visuals.dark_mode {
+                                                    egui::Color32::LIGHT_BLUE
+                                                } else {
+                                                    egui::Color32::BLUE
+                                                }
                                             } else {
-                                                egui::Color32::RED
+                                                if ui.ctx().style().visuals.dark_mode {
+                                                    egui::Color32::LIGHT_RED
+                                                } else {
+                                                    egui::Color32::RED
+                                                }
                                             },
                                             ..Default::default()
                                         },
                                     );
 
-                                    job.append(
-                                        " ",
-                                        0.0,
-                                        TextFormat {
-                                            font_id: FontId::new(14.0, egui::FontFamily::Monospace),
-                                            ..Default::default()
-                                        },
-                                    );
+                                    if i != text.split(' ').count() - 1 {
+                                        job.append(
+                                            " ",
+                                            0.0,
+                                            TextFormat {
+                                                font_id: FontId::new(
+                                                    14.0,
+                                                    egui::FontFamily::Monospace,
+                                                ),
+                                                ..Default::default()
+                                            },
+                                        );
+                                    }
                                 }
 
                                 job.wrap.max_width = wrap_width;
