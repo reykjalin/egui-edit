@@ -73,198 +73,203 @@ impl eframe::App for TemplateApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
 
-            // =============================
-            // Set up the available layout.
-            // =============================
-            let where_to_put_background = ui.painter().add(Shape::Noop);
-            let margin = Margin::symmetric(4.0, 2.0);
-            let available = ui.available_rect_before_wrap();
-            let max_rect = margin.shrink_rect(available);
-            let mut content_ui = ui.child_ui(max_rect, egui::Layout::default());
+            egui::ScrollArea::both().show(ui, |ui| {
+                // =============================
+                // Set up the available layout.
+                // =============================
+                let where_to_put_background = ui.painter().add(Shape::Noop);
+                let margin = Margin::symmetric(4.0, 2.0);
+                let available = ui.available_rect_before_wrap();
+                let max_rect = margin.shrink_rect(available);
+                let mut content_ui = ui.child_ui(max_rect, egui::Layout::default());
 
-            let font_id = FontId::new(14.0, egui::FontFamily::Monospace);
+                let font_id = FontId::new(14.0, egui::FontFamily::Monospace);
 
-            // =============================
-            // Layout function for the text, incl. syntax highlighting.
-            // =============================
-            let layouter = |ui: &egui::Ui, text: &str, _wrap_width: f32| {
-                let mut job = LayoutJob::default();
+                // =============================
+                // Layout function for the text, incl. syntax highlighting.
+                // =============================
+                let layouter = |ui: &egui::Ui, text: &str, _wrap_width: f32| {
+                    let mut job = LayoutJob::default();
 
-                for (i, word) in text.split(' ').enumerate() {
-                    job.append(
-                        word,
-                        0.0,
-                        TextFormat {
-                            font_id: font_id.clone(),
-                            color: if i % 2 == 0 {
-                                if ui.ctx().style().visuals.dark_mode {
-                                    egui::Color32::LIGHT_BLUE
-                                } else {
-                                    egui::Color32::BLUE
-                                }
-                            } else if ui.ctx().style().visuals.dark_mode {
-                                egui::Color32::LIGHT_RED
-                            } else {
-                                egui::Color32::RED
-                            },
-                            ..Default::default()
-                        },
-                    );
-
-                    if i != text.split(' ').count() - 1 {
+                    for (i, word) in text.split(' ').enumerate() {
                         job.append(
-                            " ",
+                            word,
                             0.0,
                             TextFormat {
-                                font_id: FontId::new(14.0, egui::FontFamily::Monospace),
+                                font_id: font_id.clone(),
+                                color: if i % 2 == 0 {
+                                    if ui.ctx().style().visuals.dark_mode {
+                                        egui::Color32::LIGHT_BLUE
+                                    } else {
+                                        egui::Color32::BLUE
+                                    }
+                                } else if ui.ctx().style().visuals.dark_mode {
+                                    egui::Color32::LIGHT_RED
+                                } else {
+                                    egui::Color32::RED
+                                },
                                 ..Default::default()
                             },
                         );
+
+                        if i != text.split(' ').count() - 1 {
+                            job.append(
+                                " ",
+                                0.0,
+                                TextFormat {
+                                    font_id: FontId::new(14.0, egui::FontFamily::Monospace),
+                                    ..Default::default()
+                                },
+                            );
+                        }
+                    }
+
+                    job.wrap.max_width = f32::INFINITY;
+                    ui.fonts(|f| f.layout_job(job))
+                };
+
+                // =============================
+                // Calculate dimensions.
+                // =============================
+                let row_height = content_ui.fonts(|f| f.row_height(&font_id));
+
+                const MIN_WIDTH: f32 = 24.0;
+                let available_width = content_ui.available_width().at_least(MIN_WIDTH);
+                let wrap_width = available_width;
+
+                let galley = layouter(&content_ui, &self.text, wrap_width);
+
+                // Clip all text.
+                let desired_width = available_width;
+                let desired_height = content_ui.available_height().at_least(row_height);
+                // Default values form the TextGui TextEdit.
+                let at_least = Vec2::ZERO - Margin::symmetric(4.0, 2.0).sum();
+                let desired_size = vec2(
+                    galley.size().x.max(desired_width),
+                    galley.size().y.max(desired_height),
+                )
+                .at_least(at_least);
+
+                let (id, rect) = content_ui.allocate_space(desired_size);
+
+                let painter = content_ui.painter_at(rect.expand(1.0)); // expand to avoid clipping cursor.
+
+                let galley_pos = Align2::LEFT_TOP
+                    .align_size_within_rect(galley.size(), rect)
+                    .intersect(rect) // limit pos to the response rect area
+                    .min;
+
+                // =============================
+                // Do interactions.
+                // =============================
+                let sense = Sense::click_and_drag();
+                let mut response = content_ui.interact(rect, id, sense);
+
+                if let Some(_pointer_pos) = content_ui.ctx().pointer_interact_pos() {
+                    if response.hovered() {
+                        content_ui.output_mut(|o| o.mutable_text_under_cursor = true);
                     }
                 }
 
-                job.wrap.max_width = f32::INFINITY;
-                ui.fonts(|f| f.layout_job(job))
-            };
-
-            // =============================
-            // Calculate dimensions.
-            // =============================
-            let row_height = content_ui.fonts(|f| f.row_height(&font_id));
-
-            const MIN_WIDTH: f32 = 24.0;
-            let available_width = content_ui.available_width().at_least(MIN_WIDTH);
-            let wrap_width = available_width;
-
-            let galley = layouter(&content_ui, &self.text, wrap_width);
-
-            // Clip all text.
-            let desired_width = available_width;
-            let desired_height = content_ui.available_height().at_least(row_height);
-            // Default values form the TextGui TextEdit.
-            let at_least = Vec2::ZERO - Margin::symmetric(4.0, 2.0).sum();
-            let desired_size =
-                vec2(desired_width, galley.size().y.max(desired_height)).at_least(at_least);
-
-            let (id, rect) = content_ui.allocate_space(desired_size);
-
-            let painter = content_ui.painter_at(rect.expand(1.0)); // expand to avoid clipping cursor.
-
-            let galley_pos = Align2::LEFT_TOP
-                .align_size_within_rect(galley.size(), rect)
-                .intersect(rect) // limit pos to the response rect area
-                .min;
-
-            // =============================
-            // Do interactions.
-            // =============================
-            let sense = Sense::click_and_drag();
-            let mut response = content_ui.interact(rect, id, sense);
-
-            if let Some(_pointer_pos) = content_ui.ctx().pointer_interact_pos() {
                 if response.hovered() {
-                    content_ui.output_mut(|o| o.mutable_text_under_cursor = true);
+                    content_ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
                 }
-            }
 
-            if response.hovered() {
-                content_ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
-            }
+                if response.clicked() {
+                    content_ui.memory_mut(|m| m.request_focus(response.id));
+                }
 
-            if response.clicked() {
-                content_ui.memory_mut(|m| m.request_focus(response.id));
-            }
+                let event_filter = EventFilter {
+                    horizontal_arrows: true,
+                    vertical_arrows: true,
+                    tab: true,
+                    ..Default::default()
+                };
 
-            let event_filter = EventFilter {
-                horizontal_arrows: true,
-                vertical_arrows: true,
-                tab: true,
-                ..Default::default()
-            };
+                if content_ui.memory(|m| m.has_focus(id)) {
+                    let events = content_ui.input(|i| i.filtered_events(&event_filter));
 
-            if content_ui.memory(|m| m.has_focus(id)) {
-                let events = content_ui.input(|i| i.filtered_events(&event_filter));
+                    content_ui.memory_mut(|m| m.set_focus_lock_filter(id, event_filter));
 
-                content_ui.memory_mut(|m| m.set_focus_lock_filter(id, event_filter));
-
-                for event in &events {
-                    match event {
-                        Event::Text(text_to_insert) => {
-                            if !text_to_insert.is_empty()
-                                && text_to_insert != "\n"
-                                && text_to_insert != "\r"
-                            {
-                                self.text += text_to_insert;
+                    for event in &events {
+                        match event {
+                            Event::Text(text_to_insert) => {
+                                if !text_to_insert.is_empty()
+                                    && text_to_insert != "\n"
+                                    && text_to_insert != "\r"
+                                {
+                                    self.text += text_to_insert;
+                                }
                             }
-                        }
-                        Event::Key {
-                            key: Key::Tab,
-                            pressed: true,
-                            ..
-                        } => {
-                            self.text += "\t";
-                        }
-                        Event::Key {
-                            key: Key::Enter,
-                            pressed: true,
-                            ..
-                        } => {
-                            self.text += "\n";
-                        }
-                        Event::Key {
-                            key: Key::Backspace,
-                            pressed: true,
-                            modifiers,
-                            ..
-                        } => {
-                            if modifiers.command || modifiers.mac_cmd {
-                                self.text.clear();
-                            } else {
-                                self.text.pop();
+                            Event::Key {
+                                key: Key::Tab,
+                                pressed: true,
+                                ..
+                            } => {
+                                self.text += "\t";
                             }
+                            Event::Key {
+                                key: Key::Enter,
+                                pressed: true,
+                                ..
+                            } => {
+                                self.text += "\n";
+                            }
+                            Event::Key {
+                                key: Key::Backspace,
+                                pressed: true,
+                                modifiers,
+                                ..
+                            } => {
+                                if modifiers.command || modifiers.mac_cmd {
+                                    self.text.clear();
+                                } else {
+                                    self.text.pop();
+                                }
+                            }
+                            _ => (),
                         }
-                        _ => (),
                     }
                 }
-            }
 
-            // =============================
-            // Draw the text.
-            // =============================
-            if content_ui.is_rect_visible(rect) {
-                painter.galley(galley_pos, galley.clone(), egui::Color32::WHITE);
-            }
+                // =============================
+                // Draw the text.
+                // =============================
+                if content_ui.is_rect_visible(rect) {
+                    painter.galley(galley_pos, galley.clone(), egui::Color32::WHITE);
+                }
 
-            // =============================
-            // Draw border and background.
-            // =============================
-            let frame_id = response.id;
-            let frame_rect = Margin::symmetric(4.0, 2.0).expand_rect(response.rect);
-            ui.allocate_space(frame_rect.size());
-            response |= ui.interact(frame_rect, frame_id, Sense::click());
-            if response.clicked() && !response.lost_focus() {
-                ui.memory_mut(|mem| mem.request_focus(response.id));
-            }
+                // =============================
+                // Draw border and background.
+                // =============================
+                let frame_id = response.id;
+                let frame_rect = margin.expand_rect(response.rect);
+                ui.allocate_space(frame_rect.size());
+                response |= ui.interact(frame_rect, frame_id, Sense::click());
+                if response.clicked() && !response.lost_focus() {
+                    ui.memory_mut(|mem| mem.request_focus(response.id));
+                }
 
-            let visuals = ui.style().interact(&response);
-            let frame_rect = frame_rect.expand(visuals.expansion);
-            let shape = if response.has_focus() {
-                epaint::RectShape::new(
-                    frame_rect,
-                    0.0,
-                    ui.visuals().extreme_bg_color,
-                    ui.visuals().selection.stroke,
-                )
-            } else {
-                epaint::RectShape::new(
-                    frame_rect,
-                    0.0,
-                    ui.visuals().extreme_bg_color,
-                    ui.visuals().selection.stroke, // Probably want a fainter versino of the stroke color.
-                )
-            };
+                let visuals = ui.style().interact(&response);
+                let frame_rect = frame_rect.expand(visuals.expansion);
+                let shape = if response.has_focus() {
+                    epaint::RectShape::new(
+                        frame_rect,
+                        0.0,
+                        ui.visuals().extreme_bg_color,
+                        ui.visuals().selection.stroke,
+                    )
+                } else {
+                    epaint::RectShape::new(
+                        frame_rect,
+                        0.0,
+                        ui.visuals().extreme_bg_color,
+                        ui.visuals().selection.stroke, // Probably want a fainter versino of the stroke color.
+                    )
+                };
 
-            ui.painter().set(where_to_put_background, shape);
+                ui.painter().set(where_to_put_background, shape);
+            });
         });
     }
 }
