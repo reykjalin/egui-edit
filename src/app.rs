@@ -208,9 +208,14 @@ impl eframe::App for TemplateApp {
                         Event::Key {
                             key: Key::Backspace,
                             pressed: true,
+                            modifiers,
                             ..
                         } => {
-                            self.text.pop();
+                            if modifiers.command || modifiers.mac_cmd {
+                                self.text.clear();
+                            } else {
+                                self.text.pop();
+                            }
                         }
                         _ => (),
                     }
