@@ -197,15 +197,17 @@ impl eframe::App for TemplateApp {
                     content_ui.memory_mut(|m| m.set_focus_lock_filter(id, event_filter));
 
                     for event in &events {
-                        match event {
+                        let new_cursor = match event {
                             Event::Text(text_to_insert) => {
                                 if !text_to_insert.is_empty()
                                     && text_to_insert != "\n"
                                     && text_to_insert != "\r"
                                 {
                                     self.text += text_to_insert;
-                                    galley = layouter(&content_ui, &self.text, wrap_width);
-                                    self.cursor = galley.from_ccursor(self.cursor.ccursor + 1);
+
+                                    Some(self.cursor.ccursor + 1)
+                                } else {
+                                    None
                                 }
                             }
                             Event::Key {
@@ -214,8 +216,8 @@ impl eframe::App for TemplateApp {
                                 ..
                             } => {
                                 self.text += "\t";
-                                galley = layouter(&content_ui, &self.text, wrap_width);
-                                self.cursor = galley.from_ccursor(self.cursor.ccursor + 1);
+
+                                Some(self.cursor.ccursor + 1)
                             }
                             Event::Key {
                                 key: Key::Enter,
@@ -223,8 +225,8 @@ impl eframe::App for TemplateApp {
                                 ..
                             } => {
                                 self.text += "\n";
-                                galley = layouter(&content_ui, &self.text, wrap_width);
-                                self.cursor = galley.from_ccursor(self.cursor.ccursor + 1);
+
+                                Some(self.cursor.ccursor + 1)
                             }
                             Event::Key {
                                 key: Key::Backspace,
@@ -232,16 +234,24 @@ impl eframe::App for TemplateApp {
                                 modifiers,
                                 ..
                             } => {
-                                if modifiers.command || modifiers.mac_cmd {
+                                let ccursor = if modifiers.command || modifiers.mac_cmd {
                                     self.text.clear();
-                                    self.cursor = Cursor::default();
+
+                                    Cursor::default().ccursor
                                 } else {
                                     self.text.pop();
-                                    galley = layouter(&content_ui, &self.text, wrap_width);
-                                    self.cursor = galley.from_ccursor(self.cursor.ccursor - 1);
-                                }
+
+                                    self.cursor.ccursor - 1
+                                };
+
+                                Some(ccursor)
                             }
-                            _ => (),
+                            _ => None,
+                        };
+
+                        if let Some(new_cursor) = new_cursor {
+                            galley = layouter(&content_ui, &self.text, wrap_width);
+                            self.cursor = galley.from_ccursor(new_cursor);
                         }
                     }
                 }
