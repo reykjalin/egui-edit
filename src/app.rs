@@ -2,6 +2,7 @@ use egui::{
     text::LayoutJob, vec2, Align2, Event, EventFilter, FontId, Key, Margin, NumExt, Sense, Shape,
     TextFormat, Vec2,
 };
+use epaint::text::cursor::Cursor;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -9,12 +10,16 @@ use egui::{
 pub struct TemplateApp {
     #[serde(skip)]
     text: String,
+
+    #[serde(skip)]
+    cursor: Cursor,
 }
 
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
             text: "".to_owned(),
+            cursor: Cursor::default(),
         }
     }
 }
@@ -137,7 +142,7 @@ impl eframe::App for TemplateApp {
                 let available_width = content_ui.available_width().at_least(MIN_WIDTH);
                 let wrap_width = available_width;
 
-                let galley = layouter(&content_ui, &self.text, wrap_width);
+                let mut galley = layouter(&content_ui, &self.text, wrap_width);
 
                 // Clip all text.
                 let desired_width = available_width;
@@ -199,6 +204,8 @@ impl eframe::App for TemplateApp {
                                     && text_to_insert != "\r"
                                 {
                                     self.text += text_to_insert;
+                                    galley = layouter(&content_ui, &self.text, wrap_width);
+                                    self.cursor = galley.from_ccursor(self.cursor.ccursor + 1);
                                 }
                             }
                             Event::Key {
@@ -207,6 +214,8 @@ impl eframe::App for TemplateApp {
                                 ..
                             } => {
                                 self.text += "\t";
+                                galley = layouter(&content_ui, &self.text, wrap_width);
+                                self.cursor = galley.from_ccursor(self.cursor.ccursor + 1);
                             }
                             Event::Key {
                                 key: Key::Enter,
@@ -214,6 +223,8 @@ impl eframe::App for TemplateApp {
                                 ..
                             } => {
                                 self.text += "\n";
+                                galley = layouter(&content_ui, &self.text, wrap_width);
+                                self.cursor = galley.from_ccursor(self.cursor.ccursor + 1);
                             }
                             Event::Key {
                                 key: Key::Backspace,
@@ -223,8 +234,11 @@ impl eframe::App for TemplateApp {
                             } => {
                                 if modifiers.command || modifiers.mac_cmd {
                                     self.text.clear();
+                                    self.cursor = Cursor::default();
                                 } else {
                                     self.text.pop();
+                                    galley = layouter(&content_ui, &self.text, wrap_width);
+                                    self.cursor = galley.from_ccursor(self.cursor.ccursor - 1);
                                 }
                             }
                             _ => (),
@@ -238,6 +252,26 @@ impl eframe::App for TemplateApp {
                 if content_ui.is_rect_visible(rect) {
                     painter.galley(galley_pos, galley.clone(), egui::Color32::WHITE);
                 }
+
+                // =============================
+                // Draw the cursor.
+                // =============================
+
+                // FIXME: support multiple cursors/selections.
+                let mut cursor_pos = galley
+                    .pos_from_cursor(&self.cursor)
+                    .translate(galley_pos.to_vec2());
+
+                // Handle completely empty galleys
+                cursor_pos.max.y = cursor_pos.max.y.at_least(cursor_pos.min.y + row_height);
+                // Expand to slightly above and below the text.
+                cursor_pos = cursor_pos.expand(1.5);
+
+                let cursor_stroke = ui.visuals().text_cursor;
+                let top = cursor_pos.center_top();
+                let bottom = cursor_pos.center_bottom();
+
+                painter.line_segment([top, bottom], (cursor_stroke.width, cursor_stroke.color));
 
                 // =============================
                 // Draw border and background.
