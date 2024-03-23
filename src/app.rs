@@ -1,3 +1,5 @@
+use std::sync::mpsc::{channel, Receiver, Sender};
+
 use egui::{
     text::{CursorRange, LayoutJob},
     text_selection::text_cursor_state::{ccursor_next_word, ccursor_previous_word},
@@ -15,6 +17,9 @@ pub struct TemplateApp {
 
     #[serde(skip)]
     cursor: Cursor,
+
+    #[serde(skip)]
+    file_channel: (Sender<String>, Receiver<String>),
 }
 
 impl Default for TemplateApp {
@@ -22,6 +27,7 @@ impl Default for TemplateApp {
         Self {
             text: "".to_owned(),
             cursor: Cursor::default(),
+            file_channel: channel(),
         }
     }
 }
@@ -53,6 +59,10 @@ impl eframe::App for TemplateApp {
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
         // For inspiration and more examples, go to https://emilk.github.io/egui
 
+        if let Ok(file_text) = self.file_channel.1.try_recv() {
+            self.text = file_text;
+        }
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
 
@@ -65,6 +75,24 @@ impl eframe::App for TemplateApp {
                 ui.add_space(16.0);
 
                 egui::widgets::global_dark_light_mode_buttons(ui);
+                ui.add_space(16.0);
+
+                if ui.button("Open…").clicked() {
+                    let sender = self.file_channel.0.clone();
+                    let task = rfd::AsyncFileDialog::new().pick_file();
+                    let ctx = ui.ctx().clone();
+
+                    std::thread::spawn(move || {
+                        futures::executor::block_on(async move {
+                            let file = task.await;
+                            if let Some(file) = file {
+                                let text = file.read().await;
+                                let _ = sender.send(String::from_utf8_lossy(&text).to_string());
+                                ctx.request_repaint();
+                            }
+                        })
+                    });
+                }
             });
         });
 
@@ -98,38 +126,48 @@ impl eframe::App for TemplateApp {
                 let layouter = |ui: &egui::Ui, text: &str, _wrap_width: f32| {
                     let mut job = LayoutJob::default();
 
-                    for (i, word) in text.split(' ').enumerate() {
-                        job.append(
-                            word,
-                            0.0,
-                            TextFormat {
-                                font_id: font_id.clone(),
-                                color: if i % 2 == 0 {
-                                    if ui.ctx().style().visuals.dark_mode {
-                                        egui::Color32::LIGHT_BLUE
-                                    } else {
-                                        egui::Color32::BLUE
-                                    }
-                                } else if ui.ctx().style().visuals.dark_mode {
-                                    egui::Color32::LIGHT_RED
-                                } else {
-                                    egui::Color32::RED
-                                },
-                                ..Default::default()
-                            },
-                        );
+                    // FIXME: Fix performance here.
+                    // for (i, word) in text.split(' ').enumerate() {
+                    //     job.append(
+                    //         word,
+                    //         0.0,
+                    //         TextFormat {
+                    //             font_id: font_id.clone(),
+                    //             color: if i % 2 == 0 {
+                    //                 if ui.ctx().style().visuals.dark_mode {
+                    //                     egui::Color32::LIGHT_BLUE
+                    //                 } else {
+                    //                     egui::Color32::BLUE
+                    //                 }
+                    //             } else if ui.ctx().style().visuals.dark_mode {
+                    //                 egui::Color32::LIGHT_RED
+                    //             } else {
+                    //                 egui::Color32::RED
+                    //             },
+                    //             ..Default::default()
+                    //         },
+                    //     );
 
-                        if i != text.split(' ').count() - 1 {
-                            job.append(
-                                " ",
-                                0.0,
-                                TextFormat {
-                                    font_id: FontId::new(14.0, egui::FontFamily::Monospace),
-                                    ..Default::default()
-                                },
-                            );
-                        }
-                    }
+                    //     if i != text.split(' ').count() - 1 {
+                    //         job.append(
+                    //             " ",
+                    //             0.0,
+                    //             TextFormat {
+                    //                 font_id: FontId::new(14.0, egui::FontFamily::Monospace),
+                    //                 ..Default::default()
+                    //             },
+                    //         );
+                    //     }
+                    // }
+
+                    job.append(
+                        text,
+                        0.0,
+                        TextFormat {
+                            font_id: font_id.clone(),
+                            ..Default::default()
+                        },
+                    );
 
                     job.wrap.max_width = f32::INFINITY;
                     ui.fonts(|f| f.layout_job(job))
