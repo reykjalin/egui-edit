@@ -258,7 +258,7 @@ impl eframe::App for TemplateApp {
                                     && text_to_insert != "\r"
                                 {
                                     self.text
-                                        .insert_text(&text_to_insert, self.cursor.ccursor.index);
+                                        .insert_text(text_to_insert, self.cursor.ccursor.index);
 
                                     Some(self.cursor.ccursor + text_to_insert.len())
                                 } else {
