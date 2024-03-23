@@ -1,4 +1,5 @@
 use std::sync::mpsc::{channel, Receiver, Sender};
+use std::time::Duration;
 
 use egui::{
     text::{CursorRange, LayoutJob},
@@ -412,7 +413,15 @@ impl eframe::App for TemplateApp {
                 let top = cursor_pos.center_top();
                 let bottom = cursor_pos.center_bottom();
 
-                painter.line_segment([top, bottom], (cursor_stroke.width, cursor_stroke.color));
+                if egui_animation::animate_continuous(
+                    ui,
+                    egui_animation::easing::linear,
+                    Duration::new(1, 500000),
+                    0.0,
+                ) < 0.6
+                {
+                    painter.line_segment([top, bottom], (cursor_stroke.width, cursor_stroke.color));
+                }
 
                 // =============================
                 // Draw border and background.
