@@ -1,5 +1,7 @@
 use egui::{
-    text::LayoutJob, vec2, Align2, Event, EventFilter, FontId, Key, Margin, NumExt, Sense, Shape,
+    text::{CursorRange, LayoutJob},
+    text_selection::text_cursor_state::{ccursor_next_word, ccursor_previous_word},
+    vec2, Align2, Event, EventFilter, FontId, Key, Margin, NumExt, Sense, Shape, TextBuffer,
     TextFormat, Vec2,
 };
 use epaint::text::cursor::Cursor;
@@ -203,9 +205,10 @@ impl eframe::App for TemplateApp {
                                     && text_to_insert != "\n"
                                     && text_to_insert != "\r"
                                 {
-                                    self.text += text_to_insert;
+                                    self.text
+                                        .insert_text(&text_to_insert, self.cursor.ccursor.index);
 
-                                    Some(self.cursor.ccursor + 1)
+                                    Some(self.cursor.ccursor + text_to_insert.len())
                                 } else {
                                     None
                                 }
@@ -215,7 +218,7 @@ impl eframe::App for TemplateApp {
                                 pressed: true,
                                 ..
                             } => {
-                                self.text += "\t";
+                                self.text.insert_text("\t", self.cursor.ccursor.index);
 
                                 Some(self.cursor.ccursor + 1)
                             }
@@ -224,7 +227,7 @@ impl eframe::App for TemplateApp {
                                 pressed: true,
                                 ..
                             } => {
-                                self.text += "\n";
+                                self.text.insert_text("\n", self.cursor.ccursor.index);
 
                                 Some(self.cursor.ccursor + 1)
                             }
@@ -234,17 +237,94 @@ impl eframe::App for TemplateApp {
                                 modifiers,
                                 ..
                             } => {
-                                let ccursor = if modifiers.command || modifiers.mac_cmd {
-                                    self.text.clear();
+                                let ccursor = if modifiers.mac_cmd {
+                                    let range = CursorRange {
+                                        primary: self.cursor,
+                                        secondary: self.cursor,
+                                    };
 
-                                    Cursor::default().ccursor
+                                    self.text.delete_paragraph_before_cursor(&galley, &range)
+                                } else if modifiers.alt {
+                                    self.text.delete_previous_word(self.cursor.ccursor)
                                 } else {
-                                    self.text.pop();
-
-                                    self.cursor.ccursor - 1
+                                    self.text.delete_previous_char(self.cursor.ccursor)
                                 };
 
                                 Some(ccursor)
+                            }
+                            Event::Key {
+                                key: Key::ArrowLeft,
+                                pressed: true,
+                                modifiers,
+                                ..
+                            } => {
+                                if modifiers.is_none() {
+                                    Some(galley.cursor_left_one_character(&self.cursor).ccursor)
+                                } else if modifiers.alt {
+                                    Some(
+                                        galley
+                                            .from_ccursor(ccursor_previous_word(
+                                                &self.text,
+                                                self.cursor.ccursor,
+                                            ))
+                                            .ccursor,
+                                    )
+                                } else if modifiers.mac_cmd {
+                                    Some(galley.cursor_begin_of_row(&self.cursor).ccursor)
+                                } else {
+                                    None
+                                }
+                            }
+                            Event::Key {
+                                key: Key::ArrowRight,
+                                pressed: true,
+                                modifiers,
+                                ..
+                            } => {
+                                if modifiers.is_none() {
+                                    Some(galley.cursor_right_one_character(&self.cursor).ccursor)
+                                } else if modifiers.alt {
+                                    Some(
+                                        galley
+                                            .from_ccursor(ccursor_next_word(
+                                                &self.text,
+                                                self.cursor.ccursor,
+                                            ))
+                                            .ccursor,
+                                    )
+                                } else if modifiers.mac_cmd {
+                                    Some(galley.cursor_end_of_row(&self.cursor).ccursor)
+                                } else {
+                                    None
+                                }
+                            }
+                            Event::Key {
+                                key: Key::ArrowUp,
+                                pressed: true,
+                                modifiers,
+                                ..
+                            } => {
+                                if modifiers.is_none() {
+                                    Some(galley.cursor_up_one_row(&self.cursor).ccursor)
+                                } else if modifiers.mac_cmd {
+                                    Some(galley.begin().ccursor)
+                                } else {
+                                    None
+                                }
+                            }
+                            Event::Key {
+                                key: Key::ArrowDown,
+                                pressed: true,
+                                modifiers,
+                                ..
+                            } => {
+                                if modifiers.is_none() {
+                                    Some(galley.cursor_down_one_row(&self.cursor).ccursor)
+                                } else if modifiers.mac_cmd {
+                                    Some(galley.end().ccursor)
+                                } else {
+                                    None
+                                }
                             }
                             _ => None,
                         };
