@@ -172,6 +172,9 @@ impl eframe::App for TemplateApp {
                 let sense = Sense::click_and_drag();
                 let mut response = content_ui.interact(rect, id, sense);
 
+                // ---
+                // Mouse interactions.
+                // ---
                 if let Some(_pointer_pos) = content_ui.ctx().pointer_interact_pos() {
                     if response.hovered() {
                         content_ui.output_mut(|o| o.mutable_text_under_cursor = true);
@@ -185,6 +188,16 @@ impl eframe::App for TemplateApp {
                 if response.clicked() {
                     content_ui.memory_mut(|m| m.request_focus(response.id));
                 }
+
+                if let Some(pointer_pos) = ui.ctx().pointer_interact_pos() {
+                    if response.is_pointer_button_down_on() {
+                        self.cursor = galley.cursor_from_pos(pointer_pos - response.rect.min);
+                    }
+                }
+
+                // ---
+                // Keyboard interactions.
+                // ---
 
                 let event_filter = EventFilter {
                     horizontal_arrows: true,
