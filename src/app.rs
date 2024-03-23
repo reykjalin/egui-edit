@@ -305,6 +305,20 @@ impl eframe::App for TemplateApp {
                 };
 
                 ui.painter().set(where_to_put_background, shape);
+
+                // FIXME: Fix accesskit integration.
+                #[cfg(feature = "accesskit")]
+                {
+                    let role = accesskit::Role::MultilineTextInput;
+                    crate::text_selection::accesskit_text::update_accesskit_for_text_widget(
+                        ui.ctx(),
+                        id,
+                        cursor_range,
+                        role,
+                        galley_pos,
+                        &galley,
+                    );
+                }
             });
         });
     }
