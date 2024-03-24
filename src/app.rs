@@ -536,14 +536,7 @@ impl eframe::App for TemplateApp {
                 }
 
                 // The cursor itself.
-                if content_ui.memory(|m| m.has_focus(id))
-                    && egui_animation::animate_continuous(
-                        ui,
-                        egui_animation::easing::linear,
-                        Duration::new(1, 500000),
-                        0.0,
-                    ) < 0.6
-                {
+                if content_ui.memory(|m| m.has_focus(id)) {
                     painter.line_segment([top, bottom], (cursor_stroke.width, cursor_stroke.color));
                 }
 
