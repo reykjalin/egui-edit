@@ -205,6 +205,35 @@ impl eframe::App for TemplateApp {
                     .intersect(rect) // limit pos to the response rect area
                     .min;
 
+                // ---
+                // Cursor positions and dimensions.
+                // ---
+
+                // FIXME: support multiple cursors/selections.
+                let mut cursor_pos = galley
+                    .pos_from_cursor(&self.cursor)
+                    .translate(galley_pos.to_vec2());
+
+                // Handle completely empty galleys
+                cursor_pos.max.y = cursor_pos.max.y.at_least(cursor_pos.min.y + row_height);
+                // Expand to slightly above and below the text.
+                cursor_pos = cursor_pos.expand(1.5);
+
+                let cursor_stroke = ui.visuals().text_cursor;
+                let top = cursor_pos.center_top();
+                let bottom = cursor_pos.center_bottom();
+
+                // Turn on IME if we have focus.
+                // IME is supposed to be on when the user is editing text.
+                if content_ui.memory(|m| m.has_focus(id)) {
+                    content_ui.output_mut(|o| {
+                        o.ime = Some(egui::output::IMEOutput {
+                            rect,
+                            cursor_rect: cursor_pos,
+                        })
+                    })
+                }
+
                 // =============================
                 // Do interactions.
                 // =============================
@@ -384,7 +413,9 @@ impl eframe::App for TemplateApp {
                         if let Some(new_cursor) = new_cursor {
                             galley = layouter(&content_ui, &self.text, wrap_width);
                             self.cursor = galley.from_ccursor(new_cursor);
-                            content_ui.scroll_to_rect(galley.pos_from_cursor(&self.cursor), None)
+
+                            // Scroll to the cursor to make sure it's in view after its position changed.
+                            content_ui.scroll_to_rect(cursor_pos, None)
                         }
                     }
                 }
@@ -399,22 +430,7 @@ impl eframe::App for TemplateApp {
                 // =============================
                 // Draw the cursor.
                 // =============================
-
-                // FIXME: support multiple cursors/selections.
-                let mut cursor_pos = galley
-                    .pos_from_cursor(&self.cursor)
-                    .translate(galley_pos.to_vec2());
-
-                // Handle completely empty galleys
-                cursor_pos.max.y = cursor_pos.max.y.at_least(cursor_pos.min.y + row_height);
-                // Expand to slightly above and below the text.
-                cursor_pos = cursor_pos.expand(1.5);
-
-                let cursor_stroke = ui.visuals().text_cursor;
-                let top = cursor_pos.center_top();
-                let bottom = cursor_pos.center_bottom();
-
-                if ui.memory(|m| m.has_focus(id))
+                if content_ui.memory(|m| m.has_focus(id))
                     && egui_animation::animate_continuous(
                         ui,
                         egui_animation::easing::linear,
