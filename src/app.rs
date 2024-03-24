@@ -1,6 +1,8 @@
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::Duration;
 
+use egui::text::{CCursor, CCursorRange};
+use egui::Rect;
 use egui::{
     text::{CursorRange, LayoutJob},
     text_selection::text_cursor_state::{ccursor_next_word, ccursor_previous_word},
@@ -17,7 +19,7 @@ pub struct TemplateApp {
     text: String,
 
     #[serde(skip)]
-    cursor: Cursor,
+    selection: CursorRange,
 
     #[serde(skip)]
     file_channel: (Sender<String>, Receiver<String>),
@@ -27,7 +29,7 @@ impl Default for TemplateApp {
     fn default() -> Self {
         Self {
             text: "".to_owned(),
-            cursor: Cursor::default(),
+            selection: CursorRange::default(),
             file_channel: channel(),
         }
     }
@@ -231,7 +233,7 @@ impl eframe::App for TemplateApp {
 
                 // FIXME: support multiple cursors/selections.
                 let mut cursor_pos = galley
-                    .pos_from_cursor(&self.cursor)
+                    .pos_from_cursor(&self.selection.primary)
                     .translate(galley_pos.to_vec2());
 
                 // Handle completely empty galleys
@@ -279,7 +281,10 @@ impl eframe::App for TemplateApp {
 
                 if let Some(pointer_pos) = ui.ctx().pointer_interact_pos() {
                     if response.is_pointer_button_down_on() {
-                        self.cursor = galley.cursor_from_pos(pointer_pos - response.rect.min);
+                        self.selection = CursorRange {
+                            primary: galley.cursor_from_pos(pointer_pos - response.rect.min),
+                            secondary: galley.cursor_from_pos(pointer_pos - response.rect.min),
+                        };
                     }
                 }
 
@@ -300,16 +305,20 @@ impl eframe::App for TemplateApp {
                     content_ui.memory_mut(|m| m.set_focus_lock_filter(id, event_filter));
 
                     for event in &events {
-                        let new_cursor = match event {
+                        let new_ccursor_range = match event {
                             Event::Text(text_to_insert) => {
                                 if !text_to_insert.is_empty()
                                     && text_to_insert != "\n"
                                     && text_to_insert != "\r"
                                 {
-                                    self.text
-                                        .insert_text(text_to_insert, self.cursor.ccursor.index);
+                                    let mut ccursor = self.text.delete_selected(&self.selection);
+                                    self.text.insert_text_at(
+                                        &mut ccursor,
+                                        text_to_insert,
+                                        usize::MAX,
+                                    );
 
-                                    Some(self.cursor.ccursor + text_to_insert.len())
+                                    Some(CCursorRange::one(ccursor))
                                 } else {
                                     None
                                 }
@@ -319,18 +328,20 @@ impl eframe::App for TemplateApp {
                                 pressed: true,
                                 ..
                             } => {
-                                self.text.insert_text("\t", self.cursor.ccursor.index);
+                                let mut ccursor = self.text.delete_selected(&self.selection);
+                                self.text.insert_text_at(&mut ccursor, "\t", usize::MAX);
 
-                                Some(self.cursor.ccursor + 1)
+                                Some(CCursorRange::one(ccursor))
                             }
                             Event::Key {
                                 key: Key::Enter,
                                 pressed: true,
                                 ..
                             } => {
-                                self.text.insert_text("\n", self.cursor.ccursor.index);
+                                let mut ccursor = self.text.delete_selected(&self.selection);
+                                self.text.insert_text_at(&mut ccursor, "\n", usize::MAX);
 
-                                Some(self.cursor.ccursor + 1)
+                                Some(CCursorRange::one(ccursor))
                             }
                             Event::Key {
                                 key: Key::Backspace,
@@ -339,19 +350,19 @@ impl eframe::App for TemplateApp {
                                 ..
                             } => {
                                 let ccursor = if modifiers.mac_cmd {
-                                    let range = CursorRange {
-                                        primary: self.cursor,
-                                        secondary: self.cursor,
-                                    };
-
-                                    self.text.delete_paragraph_before_cursor(&galley, &range)
-                                } else if modifiers.alt {
-                                    self.text.delete_previous_word(self.cursor.ccursor)
+                                    self.text
+                                        .delete_paragraph_before_cursor(&galley, &self.selection)
+                                } else if let Some(cursor) = self.selection.single() {
+                                    if modifiers.alt {
+                                        self.text.delete_previous_word(cursor.ccursor)
+                                    } else {
+                                        self.text.delete_previous_char(cursor.ccursor)
+                                    }
                                 } else {
-                                    self.text.delete_previous_char(self.cursor.ccursor)
+                                    self.text.delete_selected(&self.selection)
                                 };
 
-                                Some(ccursor)
+                                Some(CCursorRange::one(ccursor))
                             }
                             Event::Key {
                                 key: Key::ArrowLeft,
@@ -360,18 +371,27 @@ impl eframe::App for TemplateApp {
                                 ..
                             } => {
                                 if modifiers.is_none() {
-                                    Some(galley.cursor_left_one_character(&self.cursor).ccursor)
-                                } else if modifiers.alt {
-                                    Some(
+                                    Some(CCursorRange::one(
                                         galley
-                                            .from_ccursor(ccursor_previous_word(
-                                                &self.text,
-                                                self.cursor.ccursor,
-                                            ))
+                                            .cursor_left_one_character(&self.selection.primary)
                                             .ccursor,
-                                    )
+                                    ))
+                                } else if modifiers.alt {
+                                    Some(CCursorRange::one(ccursor_previous_word(
+                                        &self.text,
+                                        self.selection.primary.ccursor,
+                                    )))
                                 } else if modifiers.mac_cmd {
-                                    Some(galley.cursor_begin_of_row(&self.cursor).ccursor)
+                                    Some(CCursorRange::one(
+                                        galley.cursor_begin_of_row(&self.selection.primary).ccursor,
+                                    ))
+                                } else if modifiers.shift {
+                                    Some(CCursorRange::two(
+                                        self.selection.secondary.ccursor,
+                                        galley
+                                            .cursor_left_one_character(&self.selection.primary)
+                                            .ccursor,
+                                    ))
                                 } else {
                                     None
                                 }
@@ -383,18 +403,27 @@ impl eframe::App for TemplateApp {
                                 ..
                             } => {
                                 if modifiers.is_none() {
-                                    Some(galley.cursor_right_one_character(&self.cursor).ccursor)
-                                } else if modifiers.alt {
-                                    Some(
+                                    Some(CCursorRange::one(
                                         galley
-                                            .from_ccursor(ccursor_next_word(
-                                                &self.text,
-                                                self.cursor.ccursor,
-                                            ))
+                                            .cursor_right_one_character(&self.selection.primary)
                                             .ccursor,
-                                    )
+                                    ))
+                                } else if modifiers.alt {
+                                    Some(CCursorRange::one(ccursor_next_word(
+                                        &self.text,
+                                        self.selection.primary.ccursor,
+                                    )))
                                 } else if modifiers.mac_cmd {
-                                    Some(galley.cursor_end_of_row(&self.cursor).ccursor)
+                                    Some(CCursorRange::one(
+                                        galley.cursor_end_of_row(&self.selection.primary).ccursor,
+                                    ))
+                                } else if modifiers.shift {
+                                    Some(CCursorRange::two(
+                                        self.selection.secondary.ccursor,
+                                        galley
+                                            .cursor_right_one_character(&self.selection.primary)
+                                            .ccursor,
+                                    ))
                                 } else {
                                     None
                                 }
@@ -406,9 +435,16 @@ impl eframe::App for TemplateApp {
                                 ..
                             } => {
                                 if modifiers.is_none() {
-                                    Some(galley.cursor_up_one_row(&self.cursor).ccursor)
+                                    Some(CCursorRange::one(
+                                        galley.cursor_up_one_row(&self.selection.primary).ccursor,
+                                    ))
                                 } else if modifiers.mac_cmd {
-                                    Some(galley.begin().ccursor)
+                                    Some(CCursorRange::one(galley.begin().ccursor))
+                                } else if modifiers.shift {
+                                    Some(CCursorRange::two(
+                                        self.selection.secondary.ccursor,
+                                        galley.cursor_up_one_row(&self.selection.primary).ccursor,
+                                    ))
                                 } else {
                                     None
                                 }
@@ -420,9 +456,16 @@ impl eframe::App for TemplateApp {
                                 ..
                             } => {
                                 if modifiers.is_none() {
-                                    Some(galley.cursor_down_one_row(&self.cursor).ccursor)
+                                    Some(CCursorRange::one(
+                                        galley.cursor_down_one_row(&self.selection.primary).ccursor,
+                                    ))
                                 } else if modifiers.mac_cmd {
-                                    Some(galley.end().ccursor)
+                                    Some(CCursorRange::one(galley.end().ccursor))
+                                } else if modifiers.shift {
+                                    Some(CCursorRange::two(
+                                        self.selection.secondary.ccursor,
+                                        galley.cursor_down_one_row(&self.selection.primary).ccursor,
+                                    ))
                                 } else {
                                     None
                                 }
@@ -430,9 +473,12 @@ impl eframe::App for TemplateApp {
                             _ => None,
                         };
 
-                        if let Some(new_cursor) = new_cursor {
+                        if let Some(new_ccursor_range) = new_ccursor_range {
                             galley = layouter(&content_ui, &self.text, wrap_width);
-                            self.cursor = galley.from_ccursor(new_cursor);
+                            self.selection = CursorRange {
+                                primary: galley.from_ccursor(new_ccursor_range.primary),
+                                secondary: galley.from_ccursor(new_ccursor_range.secondary),
+                            };
 
                             // Scroll to the cursor to make sure it's in view after its position changed.
                             content_ui.scroll_to_rect(cursor_pos, None)
@@ -450,6 +496,42 @@ impl eframe::App for TemplateApp {
                 // =============================
                 // Draw the cursor.
                 // =============================
+
+                // The selection.
+                if !self.selection.is_empty() {
+                    // We paint the cursor selection on top of the text, so make it transparent:
+                    let color = content_ui.visuals().selection.bg_fill.linear_multiply(0.5);
+                    let [min, max] = self.selection.sorted_cursors();
+                    let min = min.rcursor;
+                    let max = max.rcursor;
+
+                    for ri in min.row..=max.row {
+                        let row = &galley.rows[ri];
+                        let left = if ri == min.row {
+                            row.x_offset(min.column)
+                        } else {
+                            row.rect.left()
+                        };
+                        let right = if ri == max.row {
+                            row.x_offset(max.column)
+                        } else {
+                            let newline_size = if row.ends_with_newline {
+                                row.height() / 2.0 // visualize that we select the newline
+                            } else {
+                                0.0
+                            };
+                            row.rect.right() + newline_size
+                        };
+                        let rect = Rect::from_min_max(
+                            galley_pos + vec2(left, row.min_y()),
+                            galley_pos + vec2(right, row.max_y()),
+                        );
+
+                        painter.rect_filled(rect, 0.0, color);
+                    }
+                }
+
+                // The cursor itself.
                 if content_ui.memory(|m| m.has_focus(id))
                     && egui_animation::animate_continuous(
                         ui,
