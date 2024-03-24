@@ -45,6 +45,26 @@ impl TemplateApp {
             return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
         }
 
+        // FIXME: Merge JetBrains Mono font variants into one .ttf file to support
+        // bolds/italic/boldi-italic etc.
+        // See https://github.com/emilk/egui/discussions/1862.
+
+        let mut fonts = egui::FontDefinitions::default();
+
+        fonts.font_data.insert(
+            "JetBrains Mono".to_owned(),
+            egui::FontData::from_static(include_bytes!("../assets/JetBrainsMonoNL-Regular.ttf")),
+        );
+
+        // Set JetBrains Mono as highest priority for monospaced fonts.
+        fonts
+            .families
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .insert(0, "JetBrains Mono".to_owned());
+
+        cc.egui_ctx.set_fonts(fonts);
+
         Default::default()
     }
 }
