@@ -1,14 +1,64 @@
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::time::Duration;
 
 use egui::text::CCursorRange;
-use egui::Rect;
+use egui::util::cache::{ComputerMut, FrameCache};
 use egui::{
     text::{CursorRange, LayoutJob},
     text_selection::text_cursor_state::{ccursor_next_word, ccursor_previous_word},
-    vec2, Align2, Event, EventFilter, FontId, Key, Margin, NumExt, Sense, Shape, TextBuffer,
-    TextFormat, Vec2,
+    vec2, Align2, Event, EventFilter, FontId, Key, Margin, NumExt, Sense, Shape, TextBuffer, Vec2,
 };
+use egui::{Color32, Rect, TextFormat};
+
+#[derive(Default)]
+struct CodeHighlighter {}
+impl ComputerMut<&str, LayoutJob> for CodeHighlighter {
+    fn compute(&mut self, s: &str) -> LayoutJob {
+        let mut job = LayoutJob::default();
+
+        let words = s.split(' ');
+        let word_count = words.clone().count();
+
+        for (i, word) in words.enumerate() {
+            let color = if i % 2 == 0 {
+                Color32::LIGHT_RED
+            } else {
+                Color32::LIGHT_BLUE
+            };
+
+            job.append(
+                word,
+                0.0,
+                TextFormat {
+                    font_id: FontId::monospace(14.0),
+                    color,
+                    ..Default::default()
+                },
+            );
+
+            if i != word_count - 1 {
+                job.append(
+                    " ",
+                    0.0,
+                    TextFormat {
+                        font_id: FontId::monospace(14.0),
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+
+        job.wrap.max_width = f32::INFINITY;
+        job
+
+        // LayoutJob::simple(
+        //     s.into(),
+        //     FontId::monospace(14.0),
+        //     Color32::LIGHT_GRAY,
+        //     f32::INFINITY,
+        // )
+    }
+}
+type HighlightCache = FrameCache<LayoutJob, CodeHighlighter>;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -146,53 +196,11 @@ impl eframe::App for TemplateApp {
                 // Layout function for the text, incl. syntax highlighting.
                 // =============================
                 let layouter = |ui: &egui::Ui, text: &str, _wrap_width: f32| {
-                    let mut job = LayoutJob::default();
+                    let layout_job = ui
+                        .ctx()
+                        .memory_mut(|m| m.caches.cache::<HighlightCache>().get(text));
 
-                    // FIXME: Fix performance here.
-                    // for (i, word) in text.split(' ').enumerate() {
-                    //     job.append(
-                    //         word,
-                    //         0.0,
-                    //         TextFormat {
-                    //             font_id: font_id.clone(),
-                    //             color: if i % 2 == 0 {
-                    //                 if ui.ctx().style().visuals.dark_mode {
-                    //                     egui::Color32::LIGHT_BLUE
-                    //                 } else {
-                    //                     egui::Color32::BLUE
-                    //                 }
-                    //             } else if ui.ctx().style().visuals.dark_mode {
-                    //                 egui::Color32::LIGHT_RED
-                    //             } else {
-                    //                 egui::Color32::RED
-                    //             },
-                    //             ..Default::default()
-                    //         },
-                    //     );
-
-                    //     if i != text.split(' ').count() - 1 {
-                    //         job.append(
-                    //             " ",
-                    //             0.0,
-                    //             TextFormat {
-                    //                 font_id: FontId::new(14.0, egui::FontFamily::Monospace),
-                    //                 ..Default::default()
-                    //             },
-                    //         );
-                    //     }
-                    // }
-
-                    job.append(
-                        text,
-                        0.0,
-                        TextFormat {
-                            font_id: font_id.clone(),
-                            ..Default::default()
-                        },
-                    );
-
-                    job.wrap.max_width = f32::INFINITY;
-                    ui.fonts(|f| f.layout_job(job))
+                    ui.fonts(|f| f.layout_job(layout_job))
                 };
 
                 // =============================
