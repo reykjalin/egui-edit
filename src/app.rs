@@ -384,6 +384,7 @@ impl eframe::App for TemplateApp {
                         if let Some(new_cursor) = new_cursor {
                             galley = layouter(&content_ui, &self.text, wrap_width);
                             self.cursor = galley.from_ccursor(new_cursor);
+                            content_ui.scroll_to_rect(galley.pos_from_cursor(&self.cursor), None)
                         }
                     }
                 }
