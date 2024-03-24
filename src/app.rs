@@ -1,7 +1,7 @@
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::Duration;
 
-use egui::text::{CCursor, CCursorRange};
+use egui::text::CCursorRange;
 use egui::Rect;
 use egui::{
     text::{CursorRange, LayoutJob},
@@ -9,7 +9,6 @@ use egui::{
     vec2, Align2, Event, EventFilter, FontId, Key, Margin, NumExt, Sense, Shape, TextBuffer,
     TextFormat, Vec2,
 };
-use epaint::text::cursor::Cursor;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -279,8 +278,13 @@ impl eframe::App for TemplateApp {
                     content_ui.memory_mut(|m| m.request_focus(response.id));
                 }
 
-                if let Some(pointer_pos) = ui.ctx().pointer_interact_pos() {
-                    if response.is_pointer_button_down_on() {
+                if let Some(pointer_pos) = content_ui.ctx().pointer_interact_pos() {
+                    if response.is_pointer_button_down_on() && response.dragged() {
+                        self.selection = CursorRange {
+                            primary: galley.cursor_from_pos(pointer_pos - response.rect.min),
+                            secondary: self.selection.secondary,
+                        };
+                    } else if response.is_pointer_button_down_on() {
                         self.selection = CursorRange {
                             primary: galley.cursor_from_pos(pointer_pos - response.rect.min),
                             secondary: galley.cursor_from_pos(pointer_pos - response.rect.min),
