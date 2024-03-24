@@ -413,12 +413,13 @@ impl eframe::App for TemplateApp {
                 let top = cursor_pos.center_top();
                 let bottom = cursor_pos.center_bottom();
 
-                if egui_animation::animate_continuous(
-                    ui,
-                    egui_animation::easing::linear,
-                    Duration::new(1, 500000),
-                    0.0,
-                ) < 0.6
+                if ui.memory(|m| m.has_focus(id))
+                    && egui_animation::animate_continuous(
+                        ui,
+                        egui_animation::easing::linear,
+                        Duration::new(1, 500000),
+                        0.0,
+                    ) < 0.6
                 {
                     painter.line_segment([top, bottom], (cursor_stroke.width, cursor_stroke.color));
                 }
