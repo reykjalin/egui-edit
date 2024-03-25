@@ -168,6 +168,21 @@ impl eframe::App for TemplateApp {
 
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
+                    if ui
+                        .add(egui::Button::new("Open…").shortcut_text(
+                            egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, Key::O).format(
+                                &egui::ModifierNames::SYMBOLS,
+                                egui::os::OperatingSystem::from_target_os()
+                                    == egui::os::OperatingSystem::Mac,
+                            ),
+                        ))
+                        .clicked()
+                    {
+                        open_file_with_native_dialog(ui, self.file_channel.0.clone());
+                    }
+
+                    ui.separator();
+
                     if ui.button("Quit").clicked() {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
@@ -176,10 +191,6 @@ impl eframe::App for TemplateApp {
 
                 egui::widgets::global_dark_light_mode_buttons(ui);
                 ui.add_space(16.0);
-
-                if ui.button("Open…").clicked() {
-                    open_file_with_native_dialog(ui, self.file_channel.0.clone());
-                }
             });
         });
 
@@ -496,6 +507,18 @@ impl eframe::App for TemplateApp {
                                 } else {
                                     None
                                 }
+                            }
+                            Event::Key {
+                                key: Key::O,
+                                pressed: true,
+                                modifiers,
+                                ..
+                            } if modifiers.command_only() => {
+                                open_file_with_native_dialog(
+                                    &content_ui,
+                                    self.file_channel.0.clone(),
+                                );
+                                None
                             }
                             _ => None,
                         };
