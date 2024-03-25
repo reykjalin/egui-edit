@@ -122,10 +122,6 @@ impl TemplateApp {
                 let text = std::fs::read_to_string(file.as_str())
                     .unwrap_or_else(|_| panic!("Could not read file {}", file));
 
-                let file_cannel = channel();
-
-                let _ = file_cannel.0.send(text.clone());
-
                 Self {
                     text: text.to_owned(),
                     ..Default::default()
