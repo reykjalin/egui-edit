@@ -60,10 +60,18 @@ impl ComputerMut<&str, LayoutJob> for CodeHighlighter {
 }
 type HighlightCache = FrameCache<LayoutJob, CodeHighlighter>;
 
+struct FileMessage {
+    file: String,
+    text: String,
+}
+
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
+    #[serde(skip)]
+    file: String,
+
     #[serde(skip)]
     text: String,
 
@@ -71,12 +79,13 @@ pub struct TemplateApp {
     selection: CursorRange,
 
     #[serde(skip)]
-    file_channel: (Sender<String>, Receiver<String>),
+    file_channel: (Sender<FileMessage>, Receiver<FileMessage>),
 }
 
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
+            file: "".to_owned(),
             text: "".to_owned(),
             selection: CursorRange::default(),
             file_channel: channel(),
@@ -115,15 +124,22 @@ impl TemplateApp {
             // FIXME: Using .as_str() here to satisfy the borrow checker seems odd.
             // I'm probably doing something wrong here.
             let metadata = std::fs::metadata(file.as_str())
-                .unwrap_or_else(|_| panic!("File not found: {}", file));
+                .unwrap_or_else(|_| panic!("File not found: {}", file.as_str()));
 
             if metadata.is_file() {
                 // FIXME: Inform user of file read error more gracefully than with a panic.
                 let text = std::fs::read_to_string(file.as_str())
                     .unwrap_or_else(|_| panic!("Could not read file {}", file));
 
+                cc.egui_ctx
+                    .send_viewport_cmd(egui::ViewportCommand::Title(format!(
+                        "egui_edit - {}",
+                        file.as_str()
+                    )));
+
                 Self {
-                    text: text.to_owned(),
+                    text,
+                    file,
                     ..Default::default()
                 }
             } else {
@@ -140,6 +156,7 @@ impl TemplateApp {
             // FIXME: Is there a better way to merge these structs? This seems slightly off.
             return Self {
                 text: config.text,
+                file: config.file,
                 ..eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
             };
         }
@@ -159,8 +176,14 @@ impl eframe::App for TemplateApp {
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
         // For inspiration and more examples, go to https://emilk.github.io/egui
 
-        if let Ok(file_text) = self.file_channel.1.try_recv() {
-            self.text = file_text;
+        if let Ok(msg) = self.file_channel.1.try_recv() {
+            self.text = msg.text;
+            self.file = msg.file;
+
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
+                "egui_edit - {}",
+                self.file.as_str()
+            )));
         }
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
@@ -179,6 +202,19 @@ impl eframe::App for TemplateApp {
                         .clicked()
                     {
                         open_file_with_native_dialog(ui, self.file_channel.0.clone());
+                    }
+
+                    if ui
+                        .add(egui::Button::new("Save file").shortcut_text(
+                            egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, Key::S).format(
+                                &egui::ModifierNames::SYMBOLS,
+                                egui::os::OperatingSystem::from_target_os()
+                                    == egui::os::OperatingSystem::Mac,
+                            ),
+                        ))
+                        .clicked()
+                    {
+                        save_text_to_file(self.file.as_str(), self.text.as_str());
                     }
 
                     ui.separator();
@@ -520,6 +556,15 @@ impl eframe::App for TemplateApp {
                                 );
                                 None
                             }
+                            Event::Key {
+                                key: Key::S,
+                                pressed: true,
+                                modifiers,
+                                ..
+                            } if modifiers.command_only() => {
+                                save_text_to_file(self.file.as_str(), self.text.as_str());
+                                None
+                            }
                             _ => None,
                         };
 
@@ -651,7 +696,7 @@ fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
     });
 }
 
-fn open_file_with_native_dialog(ui: &egui::Ui, sender: Sender<String>) {
+fn open_file_with_native_dialog(ui: &egui::Ui, sender: Sender<FileMessage>) {
     let task = rfd::AsyncFileDialog::new().pick_file();
     let ctx = ui.ctx().clone();
 
@@ -662,9 +707,19 @@ fn open_file_with_native_dialog(ui: &egui::Ui, sender: Sender<String>) {
             if let Some(file) = file {
                 // FIXME: Send back an error message when the file can't be read.
                 let text = file.read().await;
-                let _ = sender.send(String::from_utf8_lossy(&text).to_string());
+                let _ = sender.send(FileMessage {
+                    file: file.path().to_string_lossy().to_string(),
+                    text: String::from_utf8_lossy(&text).to_string(),
+                });
                 ctx.request_repaint();
             }
         })
     });
+}
+
+fn save_text_to_file(file: &str, text: &str) {
+    assert!(!file.is_empty());
+
+    // FIXME: Show a message if the file can't be saved.
+    std::fs::write(file, text).expect("Could not save file");
 }
