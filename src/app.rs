@@ -123,8 +123,12 @@ impl TemplateApp {
         let config = if let Some(file) = file {
             // FIXME: Using .as_str() here to satisfy the borrow checker seems odd.
             // I'm probably doing something wrong here.
-            let metadata = std::fs::metadata(file.as_str())
-                .unwrap_or_else(|_| panic!("File not found: {}", file.as_str()));
+            let metadata = std::fs::metadata(file.as_str()).unwrap_or_else(|_| {
+                std::fs::File::create(file.as_str())
+                    .expect("Could not create file")
+                    .metadata()
+                    .expect("Could not get metadata for file")
+            });
 
             if metadata.is_file() {
                 // FIXME: Inform user of file read error more gracefully than with a panic.
