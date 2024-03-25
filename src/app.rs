@@ -202,6 +202,7 @@ impl eframe::App for TemplateApp {
                         .clicked()
                     {
                         open_file_with_native_dialog(ui, self.file_channel.0.clone());
+                        ui.close_menu();
                     }
 
                     if ui
@@ -215,6 +216,7 @@ impl eframe::App for TemplateApp {
                         .clicked()
                     {
                         save_text_to_file(self.file.as_str(), self.text.as_str());
+                        ui.close_menu();
                     }
 
                     ui.separator();
