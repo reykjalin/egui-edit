@@ -4,6 +4,9 @@
 fn main() -> eframe::Result<()> {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
+    let mut args = std::env::args();
+    let file = args.nth(1);
+
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_app_id("com.thorlaksson.egui_edit")
@@ -19,6 +22,6 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "egui_edit",
         native_options,
-        Box::new(|cc| Box::new(egui_edit::TemplateApp::new(cc))),
+        Box::new(|cc| Box::new(egui_edit::TemplateApp::new(cc, file))),
     )
 }

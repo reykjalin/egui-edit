@@ -86,15 +86,9 @@ impl Default for TemplateApp {
 
 impl TemplateApp {
     /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, file: Option<String>) -> Self {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
-
-        // Load previous app state (if any).
-        // Note that you must enable the `persistence` feature for this to work.
-        if let Some(storage) = cc.storage {
-            return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
-        }
 
         // FIXME: Merge JetBrains Mono font variants into one .ttf file to support
         // bolds/italic/boldi-italic etc.
@@ -116,7 +110,45 @@ impl TemplateApp {
 
         cc.egui_ctx.set_fonts(fonts);
 
-        Default::default()
+        // FIXME: This may be a slightly wonky way to open the file? The branching seems excessive at least.
+        let config = if let Some(file) = file {
+            // FIXME: Using .as_str() here to satisfy the borrow checker seems odd.
+            // I'm probably doing something wrong here.
+            let metadata = std::fs::metadata(file.as_str())
+                .unwrap_or_else(|_| panic!("File not found: {}", file));
+
+            if metadata.is_file() {
+                // FIXME: Inform user of file read error more gracefully than with a panic.
+                let text = std::fs::read_to_string(file.as_str())
+                    .unwrap_or_else(|_| panic!("Could not read file {}", file));
+
+                let file_cannel = channel();
+
+                let _ = file_cannel.0.send(text.clone());
+
+                Self {
+                    text: text.to_owned(),
+                    ..Default::default()
+                }
+            } else {
+                // FXIME: we should create the file here.
+                Default::default()
+            }
+        } else {
+            Default::default()
+        };
+
+        // Load previous app state (if any).
+        // Note that you must enable the `persistence` feature for this to work.
+        if let Some(storage) = cc.storage {
+            // FIXME: Is there a better way to merge these structs? This seems slightly off.
+            return Self {
+                text: config.text,
+                ..eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
+            };
+        }
+
+        config
     }
 }
 
