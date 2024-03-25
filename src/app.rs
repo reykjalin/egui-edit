@@ -178,20 +178,7 @@ impl eframe::App for TemplateApp {
                 ui.add_space(16.0);
 
                 if ui.button("Open…").clicked() {
-                    let sender = self.file_channel.0.clone();
-                    let task = rfd::AsyncFileDialog::new().pick_file();
-                    let ctx = ui.ctx().clone();
-
-                    std::thread::spawn(move || {
-                        futures::executor::block_on(async move {
-                            let file = task.await;
-                            if let Some(file) = file {
-                                let text = file.read().await;
-                                let _ = sender.send(String::from_utf8_lossy(&text).to_string());
-                                ctx.request_repaint();
-                            }
-                        })
-                    });
+                    open_file_with_native_dialog(ui, self.file_channel.0.clone());
                 }
             });
         });
@@ -638,5 +625,21 @@ fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
             "https://github.com/emilk/egui/tree/master/crates/eframe",
         );
         ui.label(".");
+    });
+}
+
+fn open_file_with_native_dialog(ui: &egui::Ui, sender: Sender<String>) {
+    let task = rfd::AsyncFileDialog::new().pick_file();
+    let ctx = ui.ctx().clone();
+
+    std::thread::spawn(move || {
+        futures::executor::block_on(async move {
+            let file = task.await;
+            if let Some(file) = file {
+                let text = file.read().await;
+                let _ = sender.send(String::from_utf8_lossy(&text).to_string());
+                ctx.request_repaint();
+            }
+        })
     });
 }
