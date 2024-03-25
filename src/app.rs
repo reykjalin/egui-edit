@@ -658,7 +658,9 @@ fn open_file_with_native_dialog(ui: &egui::Ui, sender: Sender<String>) {
     std::thread::spawn(move || {
         futures::executor::block_on(async move {
             let file = task.await;
+            // FIXME: Send back an error message when the file can't be opened.
             if let Some(file) = file {
+                // FIXME: Send back an error message when the file can't be read.
                 let text = file.read().await;
                 let _ = sender.send(String::from_utf8_lossy(&text).to_string());
                 ctx.request_repaint();
