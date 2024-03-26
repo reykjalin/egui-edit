@@ -537,6 +537,15 @@ impl eframe::App for TemplateApp {
                                 }
                             }
                             Event::Key {
+                                key: Key::A,
+                                pressed: true,
+                                modifiers,
+                                ..
+                            } if modifiers.command_only() => Some(CCursorRange::two(
+                                galley.begin().ccursor,
+                                galley.end().ccursor,
+                            )),
+                            Event::Key {
                                 key: Key::O,
                                 pressed: true,
                                 modifiers,
