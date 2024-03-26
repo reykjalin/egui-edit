@@ -8,6 +8,7 @@ use egui::{
     vec2, Align2, Event, EventFilter, FontId, Key, Margin, NumExt, Sense, Shape, TextBuffer, Vec2,
 };
 use egui::{Color32, Rect, TextFormat};
+use relative_path::PathExt;
 
 #[derive(Default)]
 struct CodeHighlighter {}
@@ -61,7 +62,7 @@ impl ComputerMut<&str, LayoutJob> for CodeHighlighter {
 type HighlightCache = FrameCache<LayoutJob, CodeHighlighter>;
 
 struct FileMessage {
-    file: String,
+    file: relative_path::RelativePathBuf,
     text: String,
 }
 
@@ -70,7 +71,10 @@ struct FileMessage {
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
     #[serde(skip)]
-    file: String,
+    file: relative_path::RelativePathBuf,
+
+    #[serde(skip)]
+    cwd: std::path::PathBuf,
 
     #[serde(skip)]
     text: String,
@@ -85,7 +89,8 @@ pub struct TemplateApp {
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
-            file: "".to_owned(),
+            file: relative_path::RelativePath::new(".").to_relative_path_buf(),
+            cwd: std::env::current_dir().expect("Could not get current directory"),
             text: "".to_owned(),
             selection: CursorRange::default(),
             file_channel: channel(),
@@ -95,7 +100,11 @@ impl Default for TemplateApp {
 
 impl TemplateApp {
     /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>, file: Option<String>) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        cwd: std::path::PathBuf,
+        file: Option<String>,
+    ) -> Self {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
@@ -121,10 +130,20 @@ impl TemplateApp {
 
         // FIXME: This may be a slightly wonky way to open the file? The branching seems excessive at least.
         let config = if let Some(file) = file {
+            let file = if std::path::Path::new(&file).is_absolute() {
+                std::path::Path::new(&file)
+                    .relative_to(cwd.clone())
+                    .unwrap()
+            } else {
+                relative_path::RelativePath::new(&file).to_relative_path_buf()
+            };
+
+            // FIXME: All the PathBuf clone shenanigans here should probably be fixed by using some other type?
+
             // FIXME: Using .as_str() here to satisfy the borrow checker seems odd.
             // I'm probably doing something wrong here.
-            let metadata = std::fs::metadata(file.as_str()).unwrap_or_else(|_| {
-                std::fs::File::create(file.as_str())
+            let metadata = std::fs::metadata(file.to_path(cwd.clone())).unwrap_or_else(|_| {
+                std::fs::File::create(file.to_path(cwd.clone()))
                     .expect("Could not create file")
                     .metadata()
                     .expect("Could not get metadata for file")
@@ -132,8 +151,13 @@ impl TemplateApp {
 
             if metadata.is_file() {
                 // FIXME: Inform user of file read error more gracefully than with a panic.
-                let text = std::fs::read_to_string(file.as_str())
-                    .unwrap_or_else(|_| panic!("Could not read file {}", file));
+                let text =
+                    std::fs::read_to_string(file.to_path(cwd.clone())).unwrap_or_else(|_| {
+                        panic!(
+                            "Could not read file {}",
+                            file.to_path(cwd.clone()).to_string_lossy()
+                        )
+                    });
 
                 cc.egui_ctx
                     .send_viewport_cmd(egui::ViewportCommand::Title(format!(
@@ -143,7 +167,7 @@ impl TemplateApp {
 
                 Self {
                     text,
-                    file,
+                    file: file.to_relative_path_buf(),
                     ..Default::default()
                 }
             } else {
@@ -205,7 +229,11 @@ impl eframe::App for TemplateApp {
                         ))
                         .clicked()
                     {
-                        open_file_with_native_dialog(ui, self.file_channel.0.clone());
+                        open_file_with_native_dialog(
+                            ui,
+                            self.file_channel.0.clone(),
+                            self.cwd.clone(),
+                        );
                         ui.close_menu();
                     }
 
@@ -559,6 +587,7 @@ impl eframe::App for TemplateApp {
                                 open_file_with_native_dialog(
                                     &content_ui,
                                     self.file_channel.0.clone(),
+                                    self.cwd.clone(),
                                 );
                                 None
                             }
@@ -702,7 +731,11 @@ fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
     });
 }
 
-fn open_file_with_native_dialog(ui: &egui::Ui, sender: Sender<FileMessage>) {
+fn open_file_with_native_dialog(
+    ui: &egui::Ui,
+    sender: Sender<FileMessage>,
+    cwd: std::path::PathBuf,
+) {
     let task = rfd::AsyncFileDialog::new().pick_file();
     let ctx = ui.ctx().clone();
 
@@ -714,7 +747,7 @@ fn open_file_with_native_dialog(ui: &egui::Ui, sender: Sender<FileMessage>) {
                 // FIXME: Send back an error message when the file can't be read.
                 let text = file.read().await;
                 let _ = sender.send(FileMessage {
-                    file: file.path().to_string_lossy().to_string(),
+                    file: file.path().relative_to(cwd).unwrap(),
                     text: String::from_utf8_lossy(&text).to_string(),
                 });
                 ctx.request_repaint();

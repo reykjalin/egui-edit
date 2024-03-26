@@ -7,6 +7,8 @@ fn main() -> eframe::Result<()> {
     let mut args = std::env::args();
     let file = args.nth(1);
 
+    let cwd = std::env::current_dir().expect("Could not get current directory");
+
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_app_id("com.thorlaksson.egui_edit")
@@ -22,6 +24,6 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "egui_edit",
         native_options,
-        Box::new(|cc| Box::new(egui_edit::TemplateApp::new(cc, file))),
+        Box::new(|cc| Box::new(egui_edit::TemplateApp::new(cc, cwd, file))),
     )
 }
