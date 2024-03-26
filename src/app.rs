@@ -8,6 +8,7 @@ use egui::{
     vec2, Align2, Event, EventFilter, FontId, Key, Margin, NumExt, Sense, Shape, TextBuffer, Vec2,
 };
 use egui::{Color32, Rect, TextFormat};
+use epaint::text::cursor::PCursor;
 use relative_path::PathExt;
 
 struct FileMessage {
@@ -377,6 +378,24 @@ impl eframe::App for TemplateApp {
                                 if !self.selection.is_empty() {
                                     let text_to_copy =
                                         self.selection.slice_str(self.text.as_str()).to_owned();
+
+                                    content_ui.ctx().copy_text(text_to_copy);
+                                } else {
+                                    let min = galley.from_pcursor(PCursor {
+                                        paragraph: self.selection.primary.pcursor.paragraph,
+                                        offset: 0,
+                                        prefer_next_row: true,
+                                    });
+                                    let max = galley.from_pcursor(PCursor {
+                                        paragraph: self.selection.primary.pcursor.paragraph + 1,
+                                        offset: 0,
+                                        prefer_next_row: true,
+                                    });
+
+                                    let text_to_copy = CursorRange::two(min, max)
+                                        .slice_str(self.text.as_str())
+                                        .to_owned();
+
                                     content_ui.ctx().copy_text(text_to_copy);
                                 }
                                 None
@@ -387,16 +406,36 @@ impl eframe::App for TemplateApp {
                                     let text_to_cut =
                                         self.selection.slice_str(self.text.as_str()).to_owned();
                                     let ccursor = self.text.delete_selected(&self.selection);
+
                                     content_ui.ctx().copy_text(text_to_cut);
 
                                     Some(CCursorRange::one(ccursor))
                                 } else {
-                                    None
+                                    let min = galley.from_pcursor(PCursor {
+                                        paragraph: self.selection.primary.pcursor.paragraph,
+                                        offset: 0,
+                                        prefer_next_row: true,
+                                    });
+                                    let max = galley.from_pcursor(PCursor {
+                                        paragraph: self.selection.primary.pcursor.paragraph + 1,
+                                        offset: 0,
+                                        prefer_next_row: true,
+                                    });
+                                    let cursor_range = CursorRange::two(min, max);
+
+                                    let text_to_cut =
+                                        cursor_range.slice_str(self.text.as_str()).to_owned();
+                                    let ccursor = self.text.delete_selected(&cursor_range);
+
+                                    content_ui.ctx().copy_text(text_to_cut);
+
+                                    Some(CCursorRange::one(ccursor))
                                 }
                             }
                             Event::Paste(text_to_insert) => {
                                 if !text_to_insert.is_empty() {
                                     let mut ccursor = self.text.delete_selected(&self.selection);
+
                                     self.text.insert_text_at(
                                         &mut ccursor,
                                         text_to_insert,
