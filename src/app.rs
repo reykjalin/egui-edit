@@ -84,6 +84,9 @@ pub struct TemplateApp {
 
     #[serde(skip)]
     file_channel: (Sender<FileMessage>, Receiver<FileMessage>),
+
+    #[serde(skip)]
+    autofocus: bool,
 }
 
 impl Default for TemplateApp {
@@ -94,6 +97,7 @@ impl Default for TemplateApp {
             text: "".to_owned(),
             selection: CursorRange::default(),
             file_channel: channel(),
+            autofocus: true,
         }
     }
 }
@@ -357,6 +361,14 @@ impl eframe::App for TemplateApp {
                             cursor_rect: cursor_pos,
                         })
                     })
+                }
+
+                // =============================
+                // Autofocus the text widget on startup.
+                // =============================
+                if self.autofocus {
+                    content_ui.memory_mut(|m| m.request_focus(id));
+                    self.autofocus = false;
                 }
 
                 // =============================
