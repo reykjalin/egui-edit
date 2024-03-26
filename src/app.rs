@@ -372,6 +372,42 @@ impl eframe::App for TemplateApp {
 
                     for event in &events {
                         let new_ccursor_range = match event {
+                            Event::Copy => {
+                                // FIXME: If selection is empty, copy the line (i.e. paragraph in egui terms).
+                                if !self.selection.is_empty() {
+                                    let text_to_copy =
+                                        self.selection.slice_str(self.text.as_str()).to_owned();
+                                    content_ui.ctx().copy_text(text_to_copy);
+                                }
+                                None
+                            }
+                            Event::Cut => {
+                                // FIXME: If selection is empty, copy the line (i.e. paragraph in egui terms).
+                                if !self.selection.is_empty() {
+                                    let text_to_cut =
+                                        self.selection.slice_str(self.text.as_str()).to_owned();
+                                    let ccursor = self.text.delete_selected(&self.selection);
+                                    content_ui.ctx().copy_text(text_to_cut);
+
+                                    Some(CCursorRange::one(ccursor))
+                                } else {
+                                    None
+                                }
+                            }
+                            Event::Paste(text_to_insert) => {
+                                if !text_to_insert.is_empty() {
+                                    let mut ccursor = self.text.delete_selected(&self.selection);
+                                    self.text.insert_text_at(
+                                        &mut ccursor,
+                                        text_to_insert,
+                                        usize::MAX,
+                                    );
+
+                                    Some(CCursorRange::one(ccursor))
+                                } else {
+                                    None
+                                }
+                            }
                             Event::Text(text_to_insert) => {
                                 if !text_to_insert.is_empty()
                                     && text_to_insert != "\n"
