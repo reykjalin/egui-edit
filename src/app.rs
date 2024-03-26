@@ -10,57 +10,6 @@ use egui::{
 use egui::{Color32, Rect, TextFormat};
 use relative_path::PathExt;
 
-#[derive(Default)]
-struct CodeHighlighter {}
-impl ComputerMut<&str, LayoutJob> for CodeHighlighter {
-    fn compute(&mut self, s: &str) -> LayoutJob {
-        let mut job = LayoutJob::default();
-
-        let words = s.split(' ');
-        let word_count = words.clone().count();
-
-        for (i, word) in words.enumerate() {
-            let color = if i % 2 == 0 {
-                Color32::LIGHT_RED
-            } else {
-                Color32::LIGHT_BLUE
-            };
-
-            job.append(
-                word,
-                0.0,
-                TextFormat {
-                    font_id: FontId::monospace(14.0),
-                    color,
-                    ..Default::default()
-                },
-            );
-
-            if i != word_count - 1 {
-                job.append(
-                    " ",
-                    0.0,
-                    TextFormat {
-                        font_id: FontId::monospace(14.0),
-                        ..Default::default()
-                    },
-                );
-            }
-        }
-
-        job.wrap.max_width = f32::INFINITY;
-        job
-
-        // LayoutJob::simple(
-        //     s.into(),
-        //     FontId::monospace(14.0),
-        //     Color32::LIGHT_GRAY,
-        //     f32::INFINITY,
-        // )
-    }
-}
-type HighlightCache = FrameCache<LayoutJob, CodeHighlighter>;
-
 struct FileMessage {
     file: relative_path::RelativePathBuf,
     text: String,
@@ -296,10 +245,7 @@ impl eframe::App for TemplateApp {
                 // Layout function for the text, incl. syntax highlighting.
                 // =============================
                 let layouter = |ui: &egui::Ui, text: &str, _wrap_width: f32| {
-                    let layout_job = ui
-                        .ctx()
-                        .memory_mut(|m| m.caches.cache::<HighlightCache>().get(text));
-
+                    let layout_job = highlight(ui.ctx(), text, ui.visuals().dark_mode);
                     ui.fonts(|f| f.layout_job(layout_job))
                 };
 
@@ -773,4 +719,65 @@ fn save_text_to_file(file: &str, text: &str) {
 
     // FIXME: Show a message if the file can't be saved.
     std::fs::write(file, text).expect("Could not save file");
+}
+
+fn highlight(ctx: &egui::Context, text: &str, in_dark_mode: bool) -> LayoutJob {
+    #[derive(Default)]
+    struct CodeHighlighter {}
+    impl ComputerMut<(&str, bool), LayoutJob> for CodeHighlighter {
+        fn compute(&mut self, (s, in_dark_mode): (&str, bool)) -> LayoutJob {
+            let mut job = LayoutJob::default();
+
+            let words = s.split(' ');
+            let word_count = words.clone().count();
+
+            for (i, word) in words.enumerate() {
+                let color = if i % 2 == 0 {
+                    if in_dark_mode {
+                        Color32::LIGHT_RED
+                    } else {
+                        Color32::RED
+                    }
+                } else if in_dark_mode {
+                    Color32::LIGHT_BLUE
+                } else {
+                    Color32::BLUE
+                };
+
+                job.append(
+                    word,
+                    0.0,
+                    TextFormat {
+                        font_id: FontId::monospace(14.0),
+                        color,
+                        ..Default::default()
+                    },
+                );
+
+                if i != word_count - 1 {
+                    job.append(
+                        " ",
+                        0.0,
+                        TextFormat {
+                            font_id: FontId::monospace(14.0),
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
+
+            job.wrap.max_width = f32::INFINITY;
+            job
+
+            // LayoutJob::simple(
+            //     s.into(),
+            //     FontId::monospace(14.0),
+            //     Color32::LIGHT_GRAY,
+            //     f32::INFINITY,
+            // )
+        }
+    }
+    type HighlightCache = FrameCache<LayoutJob, CodeHighlighter>;
+
+    ctx.memory_mut(|m| m.caches.cache::<HighlightCache>().get((text, in_dark_mode)))
 }
