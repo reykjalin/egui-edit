@@ -16,6 +16,18 @@ struct FileMessage {
     text: String,
 }
 
+enum EditAction {
+    Delete {
+        text: String,
+        selection_after: CCursorRange,
+    },
+    InsertAndDelete {
+        inserted_text: String,
+        deleted_text: String,
+        selection_before: CCursorRange,
+    },
+}
+
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
@@ -37,6 +49,9 @@ pub struct TemplateApp {
 
     #[serde(skip)]
     autofocus: bool,
+
+    #[serde(skip)]
+    history: Vec<EditAction>,
 }
 
 impl Default for TemplateApp {
@@ -48,6 +63,7 @@ impl Default for TemplateApp {
             selection: CursorRange::default(),
             file_channel: channel(),
             autofocus: true,
+            history: Vec::new(),
         }
     }
 }
@@ -402,14 +418,14 @@ impl eframe::App for TemplateApp {
                             }
                             Event::Cut => {
                                 // FIXME: If selection is empty, copy the line (i.e. paragraph in egui terms).
-                                if !self.selection.is_empty() {
+                                let (text_to_cut, ccursor_range) = if !self.selection.is_empty() {
                                     let text_to_cut =
                                         self.selection.slice_str(self.text.as_str()).to_owned();
                                     let ccursor = self.text.delete_selected(&self.selection);
 
-                                    content_ui.ctx().copy_text(text_to_cut);
+                                    content_ui.ctx().copy_text(text_to_cut.to_owned());
 
-                                    Some(CCursorRange::one(ccursor))
+                                    (text_to_cut, CCursorRange::one(ccursor))
                                 } else {
                                     let min = galley.from_pcursor(PCursor {
                                         paragraph: self.selection.primary.pcursor.paragraph,
@@ -427,10 +443,17 @@ impl eframe::App for TemplateApp {
                                         cursor_range.slice_str(self.text.as_str()).to_owned();
                                     let ccursor = self.text.delete_selected(&cursor_range);
 
-                                    content_ui.ctx().copy_text(text_to_cut);
+                                    content_ui.ctx().copy_text(text_to_cut.to_owned());
 
-                                    Some(CCursorRange::one(ccursor))
-                                }
+                                    (text_to_cut, CCursorRange::one(ccursor))
+                                };
+
+                                self.history.push(EditAction::Delete {
+                                    text: text_to_cut.to_owned(),
+                                    selection_after: ccursor_range,
+                                });
+
+                                Some(ccursor_range)
                             }
                             Event::Paste(text_to_insert) => {
                                 if !text_to_insert.is_empty() {
@@ -452,6 +475,16 @@ impl eframe::App for TemplateApp {
                                     && text_to_insert != "\n"
                                     && text_to_insert != "\r"
                                 {
+                                    // Push edit action onto the edit history stack.
+                                    self.history.push(EditAction::InsertAndDelete {
+                                        inserted_text: text_to_insert.to_owned(),
+                                        deleted_text: self
+                                            .selection
+                                            .slice_str(&self.text)
+                                            .to_owned(),
+                                        selection_before: self.selection.as_ccursor_range(),
+                                    });
+
                                     let mut ccursor = self.text.delete_selected(&self.selection);
                                     self.text.insert_text_at(
                                         &mut ccursor,
@@ -469,6 +502,12 @@ impl eframe::App for TemplateApp {
                                 pressed: true,
                                 ..
                             } => {
+                                self.history.push(EditAction::InsertAndDelete {
+                                    inserted_text: "\t".to_owned(),
+                                    deleted_text: self.selection.slice_str(&self.text).to_owned(),
+                                    selection_before: self.selection.as_ccursor_range(),
+                                });
+
                                 let mut ccursor = self.text.delete_selected(&self.selection);
                                 self.text.insert_text_at(&mut ccursor, "\t", usize::MAX);
 
@@ -479,6 +518,12 @@ impl eframe::App for TemplateApp {
                                 pressed: true,
                                 ..
                             } => {
+                                self.history.push(EditAction::InsertAndDelete {
+                                    inserted_text: "\n".to_owned(),
+                                    deleted_text: self.selection.slice_str(&self.text).to_owned(),
+                                    selection_before: self.selection.as_ccursor_range(),
+                                });
+
                                 let mut ccursor = self.text.delete_selected(&self.selection);
                                 self.text.insert_text_at(&mut ccursor, "\n", usize::MAX);
 
@@ -490,18 +535,62 @@ impl eframe::App for TemplateApp {
                                 modifiers,
                                 ..
                             } => {
-                                let ccursor = if modifiers.mac_cmd {
-                                    self.text
-                                        .delete_paragraph_before_cursor(&galley, &self.selection)
+                                let (deleted_text, ccursor) = if modifiers.mac_cmd {
+                                    let [min, max] = self.selection.sorted_cursors();
+                                    let min = galley.from_pcursor(PCursor {
+                                        paragraph: min.pcursor.paragraph,
+                                        offset: 0,
+                                        prefer_next_row: true,
+                                    });
+
+                                    (
+                                        CursorRange::two(min, max).slice_str(&self.text).to_owned(),
+                                        self.text.delete_paragraph_before_cursor(
+                                            &galley,
+                                            &self.selection,
+                                        ),
+                                    )
                                 } else if let Some(cursor) = self.selection.single() {
                                     if modifiers.alt {
-                                        self.text.delete_previous_word(cursor.ccursor)
+                                        let min = galley.from_ccursor(ccursor_previous_word(
+                                            &self.text,
+                                            cursor.ccursor,
+                                        ));
+
+                                        (
+                                            CursorRange::two(min, cursor)
+                                                .slice_str(&self.text)
+                                                .to_owned(),
+                                            self.text.delete_previous_word(cursor.ccursor),
+                                        )
                                     } else {
-                                        self.text.delete_previous_char(cursor.ccursor)
+                                        let deleted_text = if cursor.ccursor.index > 0 {
+                                            let min_cursor =
+                                                galley.from_ccursor(cursor.ccursor - 1);
+
+                                            CursorRange::two(min_cursor, cursor)
+                                                .slice_str(&self.text)
+                                                .to_owned()
+                                        } else {
+                                            "".to_owned()
+                                        };
+
+                                        (
+                                            deleted_text,
+                                            self.text.delete_previous_char(cursor.ccursor),
+                                        )
                                     }
                                 } else {
-                                    self.text.delete_selected(&self.selection)
+                                    (
+                                        self.selection.slice_str(&self.text).to_owned(),
+                                        self.text.delete_selected(&self.selection),
+                                    )
                                 };
+
+                                self.history.push(EditAction::Delete {
+                                    text: deleted_text,
+                                    selection_after: CCursorRange::one(ccursor),
+                                });
 
                                 Some(CCursorRange::one(ccursor))
                             }
@@ -612,6 +701,52 @@ impl eframe::App for TemplateApp {
                                 }
                             }
                             Event::Key {
+                                key: Key::Z,
+                                pressed: true,
+                                modifiers,
+                                ..
+                            } if modifiers.command_only() => match self.history.pop() {
+                                Some(EditAction::InsertAndDelete {
+                                    inserted_text,
+                                    deleted_text,
+                                    selection_before,
+                                }) => {
+                                    // Delete the inserted text.
+                                    self.text.delete_selected(&CursorRange::two(
+                                        galley.from_ccursor(selection_before.primary),
+                                        galley.from_ccursor(
+                                            selection_before.primary + inserted_text.len(),
+                                        ),
+                                    ));
+
+                                    // Insert deleted text back.
+                                    if !deleted_text.is_empty() {
+                                        self.text.insert_text_at(
+                                            &mut selection_before.primary.clone(),
+                                            &deleted_text,
+                                            usize::MAX,
+                                        );
+                                    }
+
+                                    Some(selection_before)
+                                }
+
+                                Some(EditAction::Delete {
+                                    text,
+                                    selection_after,
+                                }) => {
+                                    self.text.insert_text_at(
+                                        &mut selection_after.primary.clone(),
+                                        &text,
+                                        usize::MAX,
+                                    );
+
+                                    Some(CCursorRange::one(selection_after.primary + text.len()))
+                                }
+
+                                _ => None,
+                            },
+                            Event::Key {
                                 key: Key::A,
                                 pressed: true,
                                 modifiers,
@@ -620,6 +755,7 @@ impl eframe::App for TemplateApp {
                                 galley.begin().ccursor,
                                 galley.end().ccursor,
                             )),
+                            // FIXME: Open should happen in the whole app, not just from editor.
                             Event::Key {
                                 key: Key::O,
                                 pressed: true,
@@ -633,6 +769,7 @@ impl eframe::App for TemplateApp {
                                 );
                                 None
                             }
+                            // FIXME: Save should happen in the whole app, not just from editor.
                             Event::Key {
                                 key: Key::S,
                                 pressed: true,
