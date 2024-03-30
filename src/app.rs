@@ -24,6 +24,7 @@ enum EditAction {
     InsertAndDelete {
         inserted_text: String,
         deleted_text: String,
+        selection_after_delete: CCursorRange,
         selection_before: CCursorRange,
     },
 }
@@ -457,7 +458,18 @@ impl eframe::App for TemplateApp {
                             }
                             Event::Paste(text_to_insert) => {
                                 if !text_to_insert.is_empty() {
+                                    let deleted_text =
+                                        self.selection.slice_str(&self.text).to_owned();
+
                                     let mut ccursor = self.text.delete_selected(&self.selection);
+
+                                    // Push edit action onto the edit history stack.
+                                    self.history.push(EditAction::InsertAndDelete {
+                                        inserted_text: text_to_insert.to_owned(),
+                                        deleted_text,
+                                        selection_after_delete: CCursorRange::one(ccursor),
+                                        selection_before: self.selection.as_ccursor_range(),
+                                    });
 
                                     self.text.insert_text_at(
                                         &mut ccursor,
@@ -475,17 +487,19 @@ impl eframe::App for TemplateApp {
                                     && text_to_insert != "\n"
                                     && text_to_insert != "\r"
                                 {
+                                    let deleted_text =
+                                        self.selection.slice_str(&self.text).to_owned();
+
+                                    let mut ccursor = self.text.delete_selected(&self.selection);
+
                                     // Push edit action onto the edit history stack.
                                     self.history.push(EditAction::InsertAndDelete {
                                         inserted_text: text_to_insert.to_owned(),
-                                        deleted_text: self
-                                            .selection
-                                            .slice_str(&self.text)
-                                            .to_owned(),
+                                        deleted_text,
+                                        selection_after_delete: CCursorRange::one(ccursor),
                                         selection_before: self.selection.as_ccursor_range(),
                                     });
 
-                                    let mut ccursor = self.text.delete_selected(&self.selection);
                                     self.text.insert_text_at(
                                         &mut ccursor,
                                         text_to_insert,
@@ -502,13 +516,17 @@ impl eframe::App for TemplateApp {
                                 pressed: true,
                                 ..
                             } => {
+                                let deleted_text = self.selection.slice_str(&self.text).to_owned();
+
+                                let mut ccursor = self.text.delete_selected(&self.selection);
+
                                 self.history.push(EditAction::InsertAndDelete {
                                     inserted_text: "\t".to_owned(),
-                                    deleted_text: self.selection.slice_str(&self.text).to_owned(),
+                                    deleted_text,
+                                    selection_after_delete: CCursorRange::one(ccursor),
                                     selection_before: self.selection.as_ccursor_range(),
                                 });
 
-                                let mut ccursor = self.text.delete_selected(&self.selection);
                                 self.text.insert_text_at(&mut ccursor, "\t", usize::MAX);
 
                                 Some(CCursorRange::one(ccursor))
@@ -518,13 +536,17 @@ impl eframe::App for TemplateApp {
                                 pressed: true,
                                 ..
                             } => {
+                                let deleted_text = self.selection.slice_str(&self.text).to_owned();
+
+                                let mut ccursor = self.text.delete_selected(&self.selection);
+
                                 self.history.push(EditAction::InsertAndDelete {
                                     inserted_text: "\n".to_owned(),
-                                    deleted_text: self.selection.slice_str(&self.text).to_owned(),
+                                    deleted_text,
+                                    selection_after_delete: CCursorRange::one(ccursor),
                                     selection_before: self.selection.as_ccursor_range(),
                                 });
 
-                                let mut ccursor = self.text.delete_selected(&self.selection);
                                 self.text.insert_text_at(&mut ccursor, "\n", usize::MAX);
 
                                 Some(CCursorRange::one(ccursor))
@@ -709,20 +731,21 @@ impl eframe::App for TemplateApp {
                                 Some(EditAction::InsertAndDelete {
                                     inserted_text,
                                     deleted_text,
+                                    selection_after_delete,
                                     selection_before,
                                 }) => {
                                     // Delete the inserted text.
-                                    self.text.delete_selected(&CursorRange::two(
-                                        galley.from_ccursor(selection_before.primary),
+                                    let mut ccursor = self.text.delete_selected(&CursorRange::two(
+                                        galley.from_ccursor(selection_after_delete.primary),
                                         galley.from_ccursor(
-                                            selection_before.primary + inserted_text.len(),
+                                            selection_after_delete.primary + inserted_text.len(),
                                         ),
                                     ));
 
                                     // Insert deleted text back.
                                     if !deleted_text.is_empty() {
                                         self.text.insert_text_at(
-                                            &mut selection_before.primary.clone(),
+                                            &mut ccursor,
                                             &deleted_text,
                                             usize::MAX,
                                         );
